@@ -26,6 +26,7 @@
 
 #include "ConfigResolve.h"
 
+#include <boost/utility/string_view.hpp>
 #include <cassert>
 #include <cfloat>
 #include <cstdint>
@@ -35,6 +36,8 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include <boost/utility/string_view.hpp>
+#include <Utils/StringConversions.h>
 
 // must not change because these values persist in catalogs.
 enum SQLTypes {
@@ -822,6 +825,60 @@ SQLTypes decimal_to_int_type(const SQLTypeInfo&);
 
 #ifndef __CUDACC__
 Datum StringToDatum(const std::string& s, SQLTypeInfo& ti);
+Datum StringToDatum2(const boost::string_view& s, SQLTypeInfo& ti);
+
+template <typename String>
+int64_t parse_numeric(const String& s, SQLTypeInfo& ti) {
+  const static char* zero = "0";
+  assert(s.length() <= 30);
+  size_t dot = s.find_first_of('.', 0);
+  String before_dot;
+  String after_dot;
+  if (dot != std::string::npos) {
+    // make .99 as 0.99, or std::stoll below throws exception 'std::invalid_argument'
+    before_dot = (0 == dot) ? zero : s.substr(0, dot);
+    after_dot = s.substr(dot + 1);
+  } else {
+    before_dot = s;
+    after_dot = zero;
+  }
+  const bool is_negative = before_dot.find_first_of('-', 0) != std::string::npos;
+  const int64_t sign = is_negative ? -1 : 1;
+  int64_t result;
+  result = std::abs(StringConversions::strtol(before_dot));
+  int64_t fraction = 0;
+  const size_t before_dot_digits = before_dot.length() - (is_negative ? 1 : 0);
+  if (!after_dot.empty()) {
+    fraction = StringConversions::strtol(after_dot);
+  }
+  if (ti.get_dimension() == 0) {
+    // set the type info based on the literal string
+    ti.set_scale(after_dot.length());
+    ti.set_dimension(before_dot_digits + ti.get_scale());
+    ti.set_notnull(false);
+  } else {
+    if (before_dot_digits + ti.get_scale() > static_cast<size_t>(ti.get_dimension())) {
+      throw std::runtime_error("numeric value " + StringConversions::to_string(s) +
+                               " exceeds the maximum precision of " +
+                               std::to_string(ti.get_dimension()));
+    }
+    for (ssize_t i = 0; i < static_cast<ssize_t>(after_dot.length()) - ti.get_scale();
+         i++) {
+      fraction /= 10;  // truncate the digits after decimal point.
+    }
+  }
+  // the following loop can be made more efficient if needed
+  for (int i = 0; i < ti.get_scale(); i++) {
+    result *= 10;
+  }
+  if (result < 0) {
+    result -= fraction;
+  } else {
+    result += fraction;
+  }
+  return result * sign;
+}
+
 std::string DatumToString(Datum d, const SQLTypeInfo& ti);
 bool DatumEqual(const Datum, const Datum, const SQLTypeInfo& ti);
 int64_t convert_decimal_value_to_scale(const int64_t decimal_value,

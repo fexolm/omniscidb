@@ -152,7 +152,7 @@ void import_test_geofile_importer(const std::string& file_str,
       QueryRunner::get_user_metadata(QR::get()->getSession()),
       ExecutorDeviceType::CPU);
 
-  auto file_path = boost::filesystem::path("../../Tests/Import/datafiles/" + file_str);
+  auto file_path = boost::filesystem::path("../../../Tests/Import/datafiles/" + file_str);
 
   ASSERT_TRUE(boost::filesystem::exists(file_path));
 
@@ -162,7 +162,7 @@ void import_test_geofile_importer(const std::string& file_str,
 
 bool import_test_local(const string& filename, const int64_t cnt, const double avg) {
   return import_test_common(
-      string("COPY trips FROM '") + "../../Tests/Import/datafiles/" + filename +
+      string("COPY trips FROM '") + "../../../Tests/Import/datafiles/" + filename +
           "' WITH (header='true'" +
           (filename.find(".parquet") != std::string::npos ? ",parquet='true'" : "") +
           ");",
@@ -175,7 +175,7 @@ bool import_test_local_geo(const string& filename,
                            const int64_t cnt,
                            const double avg) {
   return import_test_common_geo(string("COPY geo FROM '") +
-                                    "../../Tests/Import/datafiles/" + filename +
+                                    "../../../Tests/Import/datafiles/" + filename +
                                     "' WITH (geo='true'" + other_options + ");",
                                 "geo",
                                 cnt,
@@ -333,7 +333,7 @@ void create_minisort_table_on_column(const std::string& column_name) {
       std::string(create_table_mini_sort) +
       (column_name.size() ? " with (sort_column='" + column_name + "');" : ";")));
   EXPECT_NO_THROW(
-      run_ddl_statement("copy sortab from '../../Tests/Import/datafiles/mini_sort.txt' "
+      run_ddl_statement("copy sortab from '../../../Tests/Import/datafiles/mini_sort.txt' "
                         "with (header='false');"));
 }
 
@@ -502,7 +502,7 @@ class ImportTestMixedVarlen : public ::testing::Test {
 TEST_F(ImportTestMixedVarlen, Fix_failed_import_arrays_after_geos) {
   EXPECT_NO_THROW(
       run_ddl_statement("copy import_test_mixed_varlen from "
-                        "'../../Tests/Import/datafiles/mixed_varlen.txt' with "
+                        "'../../../Tests/Import/datafiles/mixed_varlen.txt' with "
                         "(header='false');"));
   std::string query_str = "SELECT COUNT(*) FROM import_test_mixed_varlen;";
   auto rows = run_query(query_str);
@@ -547,7 +547,7 @@ std::string convert_date_to_string(int64_t d) {
 
 inline void run_mixed_dates_test() {
   ASSERT_NO_THROW(run_ddl_statement(
-      "COPY import_test_date FROM '../../Tests/Import/datafiles/mixed_dates.txt';"));
+      "COPY import_test_date FROM '../../../Tests/Import/datafiles/mixed_dates.txt';"));
 
   auto rows = run_query("SELECT * FROM import_test_date;");
   ASSERT_EQ(size_t(11), rows->entryCount());
@@ -640,7 +640,7 @@ void decode_str_array(const TargetValue& r, std::vector<std::string>& arr) {
 TEST_F(ImportTestDateArray, ImportMixedDateArrays) {
   EXPECT_NO_THROW(
       run_ddl_statement("COPY import_test_date_arr FROM "
-                        "'../../Tests/Import/datafiles/mixed_date_arrays.txt';"));
+                        "'../../../Tests/Import/datafiles/mixed_date_arrays.txt';"));
 
   auto rows = run_query("SELECT * FROM import_test_date_arr;");
   ASSERT_EQ(size_t(10), rows->entryCount());
@@ -764,7 +764,7 @@ std::string convert_timestamp_to_string(const time_t timeval, const int dimen) {
 inline void run_mixed_timestamps_test() {
   EXPECT_NO_THROW(
       run_ddl_statement("COPY import_test_timestamps FROM "
-                        "'../../Tests/Import/datafiles/mixed_timestamps.txt';"));
+                        "'../../../Tests/Import/datafiles/mixed_timestamps.txt';"));
 
   auto rows = run_query("SELECT * FROM import_test_timestamps");
   ASSERT_EQ(size_t(11), rows->entryCount());
@@ -1184,7 +1184,7 @@ class GeoImportTest : public ::testing::Test {
 
 TEST_F(GeoImportTest, CSV_Import) {
   const auto file_path =
-      boost::filesystem::path("../../Tests/Import/datafiles/geospatial.csv");
+      boost::filesystem::path("../../../Tests/Import/datafiles/geospatial.csv");
   run_ddl_statement("COPY geospatial FROM '" + file_path.string() + "';");
   check_geo_import();
   check_geo_num_rows("p1, l, poly, mpoly, p2, p3, p4, trip_distance", 10);
@@ -1192,7 +1192,7 @@ TEST_F(GeoImportTest, CSV_Import) {
 
 TEST_F(GeoImportTest, CSV_Import_Empties) {
   const auto file_path =
-      boost::filesystem::path("../../Tests/Import/datafiles/geospatial_empties.csv");
+      boost::filesystem::path("../../../Tests/Import/datafiles/geospatial_empties.csv");
   run_ddl_statement("COPY geospatial FROM '" + file_path.string() + "';");
   check_geo_import();
   check_geo_num_rows("p1, l, poly, mpoly, p2, p3, p4, trip_distance",
@@ -1201,7 +1201,7 @@ TEST_F(GeoImportTest, CSV_Import_Empties) {
 
 TEST_F(GeoImportTest, CSV_Import_Degenerate) {
   const auto file_path =
-      boost::filesystem::path("../../Tests/Import/datafiles/geospatial_degenerate.csv");
+      boost::filesystem::path("../../../Tests/Import/datafiles/geospatial_degenerate.csv");
   run_ddl_statement("COPY geospatial FROM '" + file_path.string() + "';");
   check_geo_import();
   check_geo_num_rows("p1, l, poly, mpoly, p2, p3, p4, trip_distance",

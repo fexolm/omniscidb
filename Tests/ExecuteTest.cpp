@@ -32,6 +32,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/any.hpp>
 #include <boost/program_options.hpp>
+#include <boost/utility/string_view.hpp>
 #include <cmath>
 #include <sstream>
 
@@ -4792,7 +4793,7 @@ TEST(Select, UnsupportedMultipleArgAggregate) {
 
 namespace Importer_NS {
 
-ArrayDatum StringToArray(const std::string& s,
+ArrayDatum StringToArray(const boost::string_view& s,
                          const SQLTypeInfo& ti,
                          const CopyParams& copy_params);
 bool parseStringArray(const std::string& s,
