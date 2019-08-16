@@ -6,6 +6,8 @@
 #include <boost/utility/string_view.hpp>
 #include "sqltypes.h"
 #include "../Shared/StringToDatum.h"
+#include "DateConverters.h"
+#include "TimeGM.h"
 
 template <typename String>
 Datum StringToDatum(const String& s, SQLTypeInfo& ti) {

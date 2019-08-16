@@ -38,9 +38,6 @@
 
 #include "sqltypes.h"
 
-#include <boost/utility/string_view.hpp>
-#include "Utils/StringConversions.h"
-
 bool DatumEqual(const Datum a, const Datum b, const SQLTypeInfo& ti) {
   switch (ti.get_type()) {
     case kBOOLEAN:
