@@ -17,6 +17,7 @@
 #ifndef _STRING_CONVERSIONS_H_
 #define _STRING_CONVERSIONS_H_
 #include <boost/lexical_cast.hpp>
+#include <boost/utility/string_view.hpp>
 
 namespace StringConversions {
 
