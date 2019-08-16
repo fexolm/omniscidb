@@ -21,7 +21,7 @@ Datum StringToDatum(const String& s, SQLTypeInfo& ti) {
       } else if (s == "f" || s == "F" || s == "0" || boost::iequals(s, "FALSE")) {
         d.boolval = false;
       } else {
-        throw std::runtime_error("Invalid string for boolean " + s.to_string());
+        throw std::runtime_error("Invalid string for boolean " + StringConversions::to_string(s));
       }
       break;
     case kNUMERIC:
@@ -134,7 +134,7 @@ Datum StringToDatum(const String& s, SQLTypeInfo& ti) {
             tp, "%I . %M . %S %p", &tm_struct);  // customers weird '.' separated date
       }
       if (!p) {
-        throw std::runtime_error("Invalid timestamp time string " + s.to_string());
+        throw std::runtime_error("Invalid timestamp time string " + StringConversions::to_string(s));
       }
       tm_struct.tm_wday = tm_struct.tm_yday = tm_struct.tm_isdst = 0;
       // handle fractional seconds
