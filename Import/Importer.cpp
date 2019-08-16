@@ -498,7 +498,7 @@ ArrayDatum StringToArray(const boost::string_view& s,
           is_null = true;
         }
       }
-      Datum d = is_null ? NullDatum(elem_ti) : StringToDatum2(e, elem_ti);
+      Datum d = is_null ? NullDatum(elem_ti) : StringToDatum(e, elem_ti);
       p = appendDatum(p, d, elem_ti);
     }
     return ArrayDatum(len, buf, false);
