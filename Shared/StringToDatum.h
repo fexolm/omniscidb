@@ -1,13 +1,13 @@
 #ifndef STRING_TO_DATUM_H
 #define STRING_TO_DATUM_H
 
-#include <boost/utility/string_view.hpp>
 #include <Utils/StringConversions.h>
 #include <boost/utility/string_view.hpp>
-#include "sqltypes.h"
+#include <cinttypes>
 #include "../Shared/StringToDatum.h"
 #include "DateConverters.h"
 #include "TimeGM.h"
+#include "sqltypes.h"
 
 template <typename String>
 Datum StringToDatum(const String& s, SQLTypeInfo& ti) {
@@ -21,7 +21,8 @@ Datum StringToDatum(const String& s, SQLTypeInfo& ti) {
       } else if (s == "f" || s == "F" || s == "0" || boost::iequals(s, "FALSE")) {
         d.boolval = false;
       } else {
-        throw std::runtime_error("Invalid string for boolean " + StringConversions::to_string(s));
+        throw std::runtime_error("Invalid string for boolean " +
+                                 StringConversions::to_string(s));
       }
       break;
     case kNUMERIC:
@@ -134,7 +135,8 @@ Datum StringToDatum(const String& s, SQLTypeInfo& ti) {
             tp, "%I . %M . %S %p", &tm_struct);  // customers weird '.' separated date
       }
       if (!p) {
-        throw std::runtime_error("Invalid timestamp time string " + StringConversions::to_string(s));
+        throw std::runtime_error("Invalid timestamp time string " +
+                                 StringConversions::to_string(s));
       }
       tm_struct.tm_wday = tm_struct.tm_yday = tm_struct.tm_isdst = 0;
       // handle fractional seconds
@@ -170,7 +172,7 @@ Datum StringToDatum(const String& s, SQLTypeInfo& ti) {
       break;
     }
     case kDATE: {
-      auto st =StringConversions::to_string(s);
+      auto st = StringConversions::to_string(s);
       std::tm tm_struct = {0};
       // not sure in advance if it is used so need to zero before processing
       tm_struct.tm_gmtoff = 0;
@@ -263,4 +265,4 @@ int64_t parse_numeric(const String& s, SQLTypeInfo& ti) {
   return result * sign;
 }
 
-#endif 
+#endif
