@@ -56,6 +56,7 @@
 #include "../Shared/scope.h"
 #include "../Shared/shard_key.h"
 #include "../Shared/thread_count.h"
+#include "../Shared/StringToDatum.h"
 #include "Shared/Logger.h"
 #include "Shared/SqlTypesLayout.h"
 
@@ -70,6 +71,7 @@
 #include "../Archive/PosixFileArchive.h"
 #include "../Archive/S3Archive.h"
 #include "ArrowImporter.h"
+#include "Utils/StringConversions.h"
 
 inline auto get_filesize(const std::string& file_path) {
   boost::filesystem::path boost_file_path{file_path};
@@ -132,7 +134,7 @@ using ColumnIdToRenderGroupAnalyzerMapType =
     std::map<int, std::shared_ptr<RenderGroupAnalyzer>>;
 using FeaturePtrVector = std::vector<OGRFeatureUqPtr>;
 
-#define DEBUG_TIMING false
+#define DEBUG_TIMING true
 #define DEBUG_RENDER_GROUP_ANALYZER 0
 #define DEBUG_AWS_AUTHENTICATION 0
 
@@ -214,7 +216,8 @@ void Importer::set_import_status(const std::string& import_id, ImportStatus is) 
   import_status_map[import_id] = is;
 }
 
-static const std::string trim_space(const char* field, const size_t len) {
+template <typename String>
+static const String trim_space(const char* field, const size_t len) {
   size_t i = 0;
   size_t j = len;
   while (i < j && (field[i] == ' ' || field[i] == '\r')) {
@@ -223,25 +226,39 @@ static const std::string trim_space(const char* field, const size_t len) {
   while (i < j && (field[j - 1] == ' ' || field[j - 1] == '\r')) {
     j--;
   }
-  return std::string(field + i, j - i);
+  return String(field + i, j - i);
 }
 
-static const bool is_eol(const char& p, const std::string& line_delims) {
-  for (auto i : line_delims) {
-    if (p == i) {
+static inline const bool is_eol(const char& p, char line_delims[3]) {
+  for (int i = 0; i < 3; i++) {
+    if (p == line_delims[i]) {
       return true;
     }
   }
   return false;
 }
 
+void remove_suffix(std::string& s) {
+  s.pop_back();
+}
+void remove_prefix(std::string& s) {
+  s.erase(0, 1);
+}
+void remove_suffix(boost::string_view& s) {
+  s.remove_suffix(1);
+}
+void remove_prefix(boost::string_view& s) {
+  s.remove_prefix(1);
+}
+
+template <typename String>
 static const char* get_row(const char* buf,
                            const char* buf_end,
                            const char* entire_buf_end,
                            const CopyParams& copy_params,
                            bool is_begin,
                            const bool* is_array,
-                           std::vector<std::string>& row,
+                           std::vector<String>& row,
                            bool& try_single_thread) {
   const char* field = buf;
   const char* p;
@@ -250,7 +267,7 @@ static const char* get_row(const char* buf,
   bool has_escape = false;
   bool strip_quotes = false;
   try_single_thread = false;
-  std::string line_endings({copy_params.line_delim, '\r', '\n'});
+  char line_endings[3] = {copy_params.line_delim, '\r', '\n'};
   for (p = buf; p < entire_buf_end; p++) {
     if (*p == copy_params.escape && p < entire_buf_end - 1 &&
         *(p + 1) == copy_params.quote) {
@@ -270,7 +287,7 @@ static const char* get_row(const char* buf,
     } else if (*p == copy_params.delimiter || is_eol(*p, line_endings)) {
       if (!in_quote && !in_array) {
         if (!has_escape && !strip_quotes) {
-          std::string s = trim_space(field, p - field);
+          auto s = trim_space<String>(field, p - field);
           row.push_back(s);
         } else {
           auto field_buf = std::make_unique<char[]>(p - field + 1);
@@ -284,12 +301,12 @@ static const char* get_row(const char* buf,
               field_buf[j] = field[i];
             }
           }
-          std::string s = trim_space(field_buf.get(), j);
+          auto s = trim_space<String>(field_buf.get(), j);
           if (copy_params.quoted && s.size() > 0 && s.front() == copy_params.quote) {
-            s.erase(0, 1);
+            remove_prefix(s);
           }
           if (copy_params.quoted && s.size() > 0 && s.back() == copy_params.quote) {
-            s.pop_back();
+            remove_suffix(s);
           }
           row.push_back(s);
         }
@@ -297,8 +314,8 @@ static const char* get_row(const char* buf,
         has_escape = false;
         strip_quotes = false;
       }
-      if (is_eol(*p, line_endings) &&
-          ((!in_quote && !in_array) || copy_params.threads != 1)) {
+      if (((!in_quote && !in_array) || copy_params.threads != 1) &&
+          is_eol(*p, line_endings)) {
         while (p + 1 < buf_end && is_eol(*(p + 1), line_endings)) {
           p++;
         }
@@ -438,7 +455,7 @@ Datum NullArrayDatum(SQLTypeInfo& ti) {
   return d;
 }
 
-ArrayDatum StringToArray(const std::string& s,
+ArrayDatum StringToArray(const boost::string_view& s,
                          const SQLTypeInfo& ti,
                          const CopyParams& copy_params) {
   SQLTypeInfo elem_ti = ti.get_elem_type();
@@ -449,7 +466,7 @@ ArrayDatum StringToArray(const std::string& s,
     LOG(WARNING) << "Malformed array: " << s;
     return ArrayDatum(0, NULL, true);
   }
-  std::vector<std::string> elem_strs;
+  std::vector<boost::string_view> elem_strs;
   size_t last = 1;
   for (size_t i = s.find(copy_params.array_delim, 1); i != std::string::npos;
        i = s.find(copy_params.array_delim, last)) {
@@ -461,7 +478,7 @@ ArrayDatum StringToArray(const std::string& s,
   }
   if (elem_strs.size() == 1) {
     auto str = elem_strs.front();
-    auto str_trimmed = trim_space(str.c_str(), str.length());
+    auto str_trimmed = trim_space<std::string_view>(str.data(), str.length());
     if (str_trimmed == "") {
       elem_strs.clear();  // Empty array
     }
@@ -471,7 +488,7 @@ ArrayDatum StringToArray(const std::string& s,
     int8_t* buf = (int8_t*)checked_malloc(len);
     int8_t* p = buf;
     for (auto& es : elem_strs) {
-      auto e = trim_space(es.c_str(), es.length());
+      auto e = trim_space<std::string>(es.data(), es.length());
       bool is_null = (e == copy_params.null_str) || e == "NULL";
       if (!elem_ti.is_string() && e == "") {
         is_null = true;
@@ -613,7 +630,7 @@ static size_t find_beginning(const char* buffer,
 }
 
 void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
-                                  const std::string& val,
+                                  const boost::string_view& val,
                                   const bool is_null,
                                   const CopyParams& copy_params,
                                   const int64_t replicate_count) {
@@ -635,9 +652,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     }
     case kTINYINT: {
       if (!is_null && (isdigit(val[0]) || val[0] == '-')) {
-        SQLTypeInfo ti = cd->columnType;
-        Datum d = StringToDatum(val, ti);
-        addTinyint(d.tinyintval);
+        addTinyint(StringConversions::strtol(val));
       } else {
         if (cd->columnType.get_notnull()) {
           throw std::runtime_error("NULL for column " + cd->columnName);
@@ -648,9 +663,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     }
     case kSMALLINT: {
       if (!is_null && (isdigit(val[0]) || val[0] == '-')) {
-        SQLTypeInfo ti = cd->columnType;
-        Datum d = StringToDatum(val, ti);
-        addSmallint(d.smallintval);
+        addSmallint(StringConversions::strtol(val));
       } else {
         if (cd->columnType.get_notnull()) {
           throw std::runtime_error("NULL for column " + cd->columnName);
@@ -661,9 +674,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     }
     case kINT: {
       if (!is_null && (isdigit(val[0]) || val[0] == '-')) {
-        SQLTypeInfo ti = cd->columnType;
-        Datum d = StringToDatum(val, ti);
-        addInt(d.intval);
+        addInt(StringConversions::strtol(val));
       } else {
         if (cd->columnType.get_notnull()) {
           throw std::runtime_error("NULL for column " + cd->columnName);
@@ -675,8 +686,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     case kBIGINT: {
       if (!is_null && (isdigit(val[0]) || val[0] == '-')) {
         SQLTypeInfo ti = cd->columnType;
-        Datum d = StringToDatum(val, ti);
-        addBigint(d.bigintval);
+        addBigint(parse_numeric(val, ti));
       } else {
         if (cd->columnType.get_notnull()) {
           throw std::runtime_error("NULL for column " + cd->columnName);
@@ -689,9 +699,9 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     case kNUMERIC: {
       if (!is_null) {
         SQLTypeInfo ti(kNUMERIC, 0, 0, false);
-        Datum d = StringToDatum(val, ti);
+        auto bigintval = parse_numeric(val, ti);
         const auto converted_decimal_value =
-            convert_decimal_value_to_scale(d.bigintval, ti, cd->columnType);
+            convert_decimal_value_to_scale(bigintval, ti, cd->columnType);
         addBigint(converted_decimal_value);
       } else {
         if (cd->columnType.get_notnull()) {
@@ -703,7 +713,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     }
     case kFLOAT:
       if (!is_null && (val[0] == '.' || isdigit(val[0]) || val[0] == '-')) {
-        addFloat((float)std::atof(val.c_str()));
+        addFloat(StringConversions::strtof(val));
       } else {
         if (cd->columnType.get_notnull()) {
           throw std::runtime_error("NULL for column " + cd->columnName);
@@ -713,7 +723,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
       break;
     case kDOUBLE:
       if (!is_null && (val[0] == '.' || isdigit(val[0]) || val[0] == '-')) {
-        addDouble(std::atof(val.c_str()));
+        addDouble(StringConversions::strtod(val));
       } else {
         if (cd->columnType.get_notnull()) {
           throw std::runtime_error("NULL for column " + cd->columnName);
@@ -736,7 +746,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
                                    " was " + std::to_string(val.length()) + " max is " +
                                    std::to_string(StringDictionary::MAX_STRLEN));
         }
-        addString(val);
+        addString(val.to_string());
       }
       break;
     }
@@ -745,8 +755,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     case kDATE:
       if (!is_null && (isdigit(val[0]) || val[0] == '-')) {
         SQLTypeInfo ti = cd->columnType;
-        Datum d = StringToDatum(val, ti);
-        addBigint(d.bigintval);
+        addBigint(parse_numeric(val, ti));
       } else {
         if (cd->columnType.get_notnull()) {
           throw std::runtime_error("NULL for column " + cd->columnName);
@@ -795,7 +804,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
           } else {
             if (ti.get_size() > 0 && static_cast<size_t>(ti.get_size()) != d.length) {
               throw std::runtime_error("Fixed length array for column " + cd->columnName +
-                                       " has incorrect length: " + val);
+                                       " has incorrect length: " + val.to_string());
             }
             addArray(d);
           }
@@ -809,7 +818,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     case kLINESTRING:
     case kPOLYGON:
     case kMULTIPOLYGON:
-      addGeoString(val);
+      addGeoString(val.to_string());
       break;
     default:
       CHECK(false) << "TypedImportBuffer::add_value() does not support type " << type;
@@ -1811,7 +1820,7 @@ static ImportStatus import_thread_delimited(
     for (const auto& p : import_buffers) {
       p->clear();
     }
-    std::vector<std::string> row;
+    std::vector<boost::string_view> row;
     size_t row_index_plus_one = 0;
     for (const char* p = thread_buf; p < thread_buf_end; p++) {
       row.clear();
@@ -1842,7 +1851,7 @@ static ImportStatus import_thread_delimited(
       if (row.size() < num_cols || (num_cols + point_cols) < row.size()) {
         import_status.rows_rejected++;
         LOG(ERROR) << "Incorrect Row (expected " << num_cols << " columns, has "
-                   << row.size() << "): " << row;
+                   << row.size() << "): ";
         if (import_status.rows_rejected > copy_params.max_reject) {
           break;
         }
@@ -1992,8 +2001,7 @@ static ImportStatus import_thread_delimited(
             import_buffers[col_idx_to_pop]->pop_value();
           }
           import_status.rows_rejected++;
-          LOG(ERROR) << "Input exception thrown: " << e.what()
-                     << ". Row discarded. Data: " << row;
+          LOG(ERROR) << "Input exception thrown: " << e.what();
         }
       });
       total_str_to_val_time_us += us;
@@ -2004,7 +2012,7 @@ static ImportStatus import_thread_delimited(
     }
   });
   if (DEBUG_TIMING && import_status.rows_completed > 0) {
-    LOG(INFO) << "Thread" << std::this_thread::get_id() << ":"
+LOG(INFO) << "Thread" << std::this_thread::get_id() << ":"
               << import_status.rows_completed << " rows inserted in "
               << (double)ms / 1000.0 << "sec, Insert Time: " << (double)load_ms / 1000.0
               << "sec, get_row: " << (double)total_get_row_time_us / 1000000.0
@@ -2016,7 +2024,7 @@ static ImportStatus import_thread_delimited(
   // LOG(INFO) << " return " << import_status.thread_id << std::endl;
 
   return import_status;
-}
+}  // namespace Importer_NS
 
 static ImportStatus import_thread_shapefile(
     int thread_id,
@@ -2725,7 +2733,8 @@ void Detector::split_raw_data() {
   bool try_single_thread = false;
   for (const char* p = buf; p < buf_end; p++) {
     std::vector<std::string> row;
-    p = get_row(p, buf_end, buf_end, copy_params, true, nullptr, row, try_single_thread);
+    p = get_row<std::string>(
+        p, buf_end, buf_end, copy_params, true, nullptr, row, try_single_thread);
     raw_rows.push_back(row);
     if (try_single_thread) {
       break;
@@ -2736,7 +2745,7 @@ void Detector::split_raw_data() {
     raw_rows.clear();
     for (const char* p = buf; p < buf_end; p++) {
       std::vector<std::string> row;
-      p = get_row(
+      p = get_row<std::string>(
           p, buf_end, buf_end, copy_params, true, nullptr, row, try_single_thread);
       raw_rows.push_back(row);
     }
@@ -3475,7 +3484,9 @@ void DataStreamSink::import_compressed(std::vector<std::string>& file_paths) {
 
       // in future, depending on data types of this uncompressed stream
       // it can be feed into other function such like importParquet, etc
-      ret = importDelimited(file_path, true);
+      auto import_time =
+          measure<>::execution([&]() { ret = importDelimited(file_path, true); });
+      std::cout << "Total import time: " << (double)import_time / 1000  << " sec" << std::endl;
     } catch (...) {
       if (!teptr) {  // no replace
         teptr = std::current_exception();
@@ -3811,7 +3822,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
       auto thread_id = stack_thread_ids.top();
       stack_thread_ids.pop();
       // LOG(INFO) << " stack_thread_ids.pop " << thread_id << std::endl;
-
+ 
       threads.push_back(std::async(std::launch::async,
                                    import_thread_delimited,
                                    thread_id,
@@ -3914,7 +3925,9 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     }
   }
 
-  checkpoint(start_epoch);
+  auto checkpoint_time = measure<>::execution([&]() { checkpoint(start_epoch); });
+
+  std::cout << "Checkpoint time: " << (double)checkpoint_time / 1000 << " sec" << std::endl;
 
   // must set import_status.load_truncated before closing this end of pipe
   // otherwise, the thread on the other end would throw an unwanted 'write()'
