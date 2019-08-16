@@ -56,6 +56,7 @@
 #include "../Shared/scope.h"
 #include "../Shared/shard_key.h"
 #include "../Shared/thread_count.h"
+#include "../Shared/StringToDatum.h"
 #include "Shared/Logger.h"
 #include "Shared/SqlTypesLayout.h"
 
@@ -644,7 +645,7 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
         addBoolean(inline_fixed_encoding_null_val(cd->columnType));
       } else {
         SQLTypeInfo ti = cd->columnType;
-        Datum d = StringToDatum2(val, ti);
+        Datum d = StringToDatum(val, ti);
         addBoolean((int8_t)d.boolval);
       }
       break;
