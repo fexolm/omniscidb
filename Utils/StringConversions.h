@@ -17,7 +17,7 @@
 #ifndef _STRING_CONVERSIONS_H_
 #define _STRING_CONVERSIONS_H_
 #include <boost/utility/string_view.hpp>
-#include <cstdlib>
+#include <string>
 
 namespace StringConversions {
 
@@ -51,13 +51,13 @@ int64_t strtol(const String& s) {
 template <typename String>
 double strtod(const String& s) {
   auto st = to_string(s);
-  return std::strtod(st);
+  return std::stod(st);
 }
 
 template <typename String>
 float strtof(const String& s) {
   auto st = to_string(s);
-  return std::strtof(st);
+  return std::stof(st);
 }
 }  // namespace StringConversions
 #endif /* _STRING_CONVERSIONS_H_ */
