@@ -19,7 +19,7 @@
 
 enum class ExecutorDeviceType { CPU, GPU };
 
-enum class ExecutorOptLevel { Default, LoopStrengthReduction };
+enum class ExecutorOptLevel { Default, LoopStrengthReduction, ReductionJIT };
 
 enum class ExecutorExplainType { Default, Optimized };
 
@@ -31,13 +31,13 @@ struct CompilationOptions {
   const ExecutorOptLevel opt_level_;
   const bool with_dynamic_watchdog_;
   const ExecutorExplainType explain_type_{ExecutorExplainType::Default};
-  const bool register_intel_jit_listener_;
+  const bool register_intel_jit_listener_{false};
 };
 
 struct ExecutionOptions {
   const bool output_columnar_hint;
   const bool allow_multifrag;
-  const bool just_explain;
+  const bool just_explain;  // return the generated IR for the first step
   const bool allow_loop_joins;
   const bool with_watchdog;  // Per work unit, not global.
   const bool jit_debug;

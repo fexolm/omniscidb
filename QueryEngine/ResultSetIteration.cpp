@@ -73,13 +73,6 @@ TargetValue make_avg_target_value(const int8_t* ptr1,
   return pair_to_double({sum, count}, target_info.sql_type, false);
 }
 
-// Gets the byte offset, starting from the beginning of the row targets buffer, of
-// the value in position slot_idx (only makes sense for row-wise representation).
-size_t get_byteoff_of_slot(const size_t slot_idx,
-                           const QueryMemoryDescriptor& query_mem_desc) {
-  return query_mem_desc.getPaddedColWidthForRange(0, slot_idx);
-}
-
 // Given the entire buffer for the result set, buff, finds the beginning of the
 // column for slot_idx. Only makes sense for column-wise representation.
 const int8_t* advance_col_buff_to_slot(const int8_t* buff,
@@ -112,12 +105,19 @@ const int8_t* advance_col_buff_to_slot(const int8_t* buff,
 }
 }  // namespace
 
+// Gets the byte offset, starting from the beginning of the row targets buffer, of
+// the value in position slot_idx (only makes sense for row-wise representation).
+size_t get_byteoff_of_slot(const size_t slot_idx,
+                           const QueryMemoryDescriptor& query_mem_desc) {
+  return query_mem_desc.getPaddedColWidthForRange(0, slot_idx);
+}
+
 std::vector<TargetValue> ResultSet::getRowAt(
     const size_t global_entry_idx,
     const bool translate_strings,
     const bool decimal_to_double,
     const bool fixup_count_distinct_pointers,
-    const bool skip_non_lazy_columns /* = false*/) const {
+    const std::vector<bool>& targets_to_skip /* = {}*/) const {
   const auto storage_lookup_result =
       fixup_count_distinct_pointers
           ? StorageLookupResult{storage_.get(), global_entry_idx, 0}
@@ -147,9 +147,8 @@ std::vector<TargetValue> ResultSet::getRowAt(
   for (size_t target_idx = 0; target_idx < storage_->targets_.size(); ++target_idx) {
     const auto& agg_info = storage_->targets_[target_idx];
     if (query_mem_desc_.didOutputColumnar()) {
-      if (skip_non_lazy_columns) {
-        row.push_back(!lazy_fetch_info_.empty() &&
-                              lazy_fetch_info_[target_idx].is_lazily_fetched
+      if (!targets_to_skip.empty()) {
+        row.push_back(!targets_to_skip[target_idx]
                           ? getTargetValueFromBufferColwise(crt_col_ptr,
                                                             keys_ptr,
                                                             storage->query_mem_desc_,
@@ -256,13 +255,13 @@ std::vector<TargetValue> ResultSet::getRowAt(const size_t logical_index) const {
 
 std::vector<TargetValue> ResultSet::getRowAtNoTranslations(
     const size_t logical_index,
-    const bool skip_non_lazy_columns /* = false*/) const {
+    const std::vector<bool>& targets_to_skip /* = {}*/) const {
   if (logical_index >= entryCount()) {
     return {};
   }
   const auto entry_idx =
       permutation_.empty() ? logical_index : permutation_[logical_index];
-  return getRowAt(entry_idx, false, false, false, skip_non_lazy_columns);
+  return getRowAt(entry_idx, false, false, false, targets_to_skip);
 }
 
 bool ResultSet::isRowAtEmpty(const size_t logical_index) const {
@@ -1426,7 +1425,8 @@ TargetValue ResultSet::makeGeoTargetValue(const int8_t* geo_target_ptr,
             getCoordsDataPtr(geo_target_ptr),
             getCoordsLength(geo_target_ptr));
       }
-    } break;
+      break;
+    }
     case kLINESTRING: {
       if (separate_varlen_storage_valid_ && !target_info.is_agg) {
         const auto& varlen_buffer = getSeparateVarlenStorage();
@@ -1459,7 +1459,8 @@ TargetValue ResultSet::makeGeoTargetValue(const int8_t* geo_target_ptr,
             getCoordsDataPtr(geo_target_ptr),
             getCoordsLength(geo_target_ptr));
       }
-    } break;
+      break;
+    }
     case kPOLYGON: {
       if (separate_varlen_storage_valid_ && !target_info.is_agg) {
         const auto& varlen_buffer = getSeparateVarlenStorage();
@@ -1501,7 +1502,8 @@ TargetValue ResultSet::makeGeoTargetValue(const int8_t* geo_target_ptr,
             getRingSizesPtr(geo_target_ptr),
             getRingSizesLength(geo_target_ptr) * 4);
       }
-    } break;
+      break;
+    }
     case kMULTIPOLYGON: {
       if (separate_varlen_storage_valid_ && !target_info.is_agg) {
         const auto& varlen_buffer = getSeparateVarlenStorage();
@@ -1551,7 +1553,8 @@ TargetValue ResultSet::makeGeoTargetValue(const int8_t* geo_target_ptr,
             getPolyRingsPtr(geo_target_ptr),
             getPolyRingsLength(geo_target_ptr) * 4);
       }
-    } break;
+      break;
+    }
     default:
       throw std::runtime_error("Unknown Geometry type encountered: " +
                                target_info.sql_type.get_type_name());
@@ -1875,10 +1878,7 @@ bool ResultSetStorage::isEmptyEntry(const size_t entry_idx, const int8_t* buff) 
     CHECK_GE(query_mem_desc_.getTargetIdxForKey(), 0);
     CHECK_LT(static_cast<size_t>(query_mem_desc_.getTargetIdxForKey()),
              target_init_vals_.size());
-    const auto key_bytes_with_padding =
-        align_to_int64(get_key_bytes_rowwise(query_mem_desc_));
-    const auto rowwise_target_ptr =
-        row_ptr_rowwise(buff, query_mem_desc_, entry_idx) + key_bytes_with_padding;
+    const auto rowwise_target_ptr = row_ptr_rowwise(buff, query_mem_desc_, entry_idx);
     const auto target_slot_off =
         get_byteoff_of_slot(query_mem_desc_.getTargetIdxForKey(), query_mem_desc_);
     return read_int_from_buff(rowwise_target_ptr + target_slot_off,

@@ -34,6 +34,7 @@
 #include "OverlapsJoinHashTable.h"
 #include "QueryRewrite.h"
 #include "QueryTemplateGenerator.h"
+#include "ResultSetReductionJIT.h"
 #include "RuntimeFunctions.h"
 #include "SpeculativeTopN.h"
 
@@ -166,7 +167,8 @@ void Executor::clearMemory(const Data_Namespace::MemoryLevel memory_level) {
         // CPU memory (currently used in ExecuteTest to lower memory pressure)
         JoinHashTableCacheInvalidator::invalidateCaches();
       }
-    } break;
+      break;
+    }
     default: {
       throw std::runtime_error(
           "Clearing memory levels other than the CPU level or GPU level is not "
@@ -630,7 +632,8 @@ std::pair<int64_t, int32_t> Executor::reduceResults(const SQLAgg agg,
                       ? static_cast<int64_t>(agg_result)
                       : float_to_double_bin(static_cast<int32_t>(agg_result), true);
               return {converted_bin, 0};
-            } break;
+              break;
+            }
             case 8: {
               int64_t agg_result = agg_init_val;
               for (size_t i = 0; i < out_vec_sz; ++i) {
@@ -640,7 +643,8 @@ std::pair<int64_t, int32_t> Executor::reduceResults(const SQLAgg agg,
                     *reinterpret_cast<const double*>(may_alias_ptr(&agg_init_val)));
               }
               return {agg_result, 0};
-            } break;
+              break;
+            }
             default:
               CHECK(false);
           }
@@ -883,9 +887,18 @@ ResultSetPtr Executor::reduceMultiDeviceResultSets(
     reduced_results = first;
   }
 
+#ifdef WITH_REDUCTION_JIT
+  const auto& this_result_set = results_per_device[0].first;
+  ResultSetReductionJIT reduction_jit(this_result_set->getQueryMemDesc(),
+                                      this_result_set->getTargetInfos(),
+                                      this_result_set->getTargetInitVals());
+  auto reduction_code = reduction_jit.codegen();
+#else
+  ReductionCode reduction_code{};
+#endif  // WITH_REDUCTION_JIT
   for (size_t i = 1; i < results_per_device.size(); ++i) {
-    reduced_results->getStorage()->reduce(*(results_per_device[i].first->getStorage()),
-                                          {});
+    reduced_results->getStorage()->reduce(
+        *(results_per_device[i].first->getStorage()), {}, reduction_code);
   }
 
   return reduced_results;
@@ -1074,8 +1087,8 @@ RelAlgExecutionUnit replace_scan_limit(const RelAlgExecutionUnit& ra_exe_unit_in
           ra_exe_unit_in.estimator,
           ra_exe_unit_in.sort_info,
           new_scan_limit,
-          ra_exe_unit_in.use_bump_allocator,
-          ra_exe_unit_in.query_features};
+          ra_exe_unit_in.query_features,
+          ra_exe_unit_in.use_bump_allocator};
 }
 
 }  // namespace
@@ -1619,7 +1632,6 @@ void Executor::dispatchFragments(
                                              rowid_lookup_key));
         };
     fragment_descriptor.assignFragsToMultiDispatch(multifrag_kernel_dispatch);
-
   } else {
     VLOG(1) << "Dispatching kernel per fragment";
     VLOG(1) << query_mem_desc.toString();

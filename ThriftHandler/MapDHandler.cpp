@@ -359,7 +359,7 @@ void MapDHandler::connect_impl(TSessionId& session,
                         std::make_shared<Catalog_Namespace::SessionInfo>(
                             cat, user_meta, executor_device_type_, session));
   CHECK(emplace_retval.second);
-  SessionMap::mapped_type const session_ptr = emplace_retval.first->second;
+  SessionMap::mapped_type session_ptr = emplace_retval.first->second;
   log_session.set_session(session_ptr);
   if (!super_user_rights_) {  // no need to connect to leaf_aggregator_ at this time while
                               // doing warmup
@@ -404,6 +404,7 @@ void MapDHandler::disconnect_impl(const SessionMap::iterator& session_it) {
 }
 
 void MapDHandler::switch_database(const TSessionId& session, const std::string& dbname) {
+  LOG_SESSION(session);
   mapd_lock_guard<mapd_shared_mutex> write_lock(sessions_mutex_);
   auto session_it = get_session_it_unsafe(session);
 
@@ -4254,6 +4255,11 @@ void MapDHandler::get_heap_profile(std::string& profile, const TSessionId& sessi
 
 // NOTE: Only call check_session_exp_unsafe() when you hold a lock on sessions_mutex_.
 void MapDHandler::check_session_exp_unsafe(const SessionMap::iterator& session_it) {
+  if (session_it->second.use_count() > 2) {
+    // SessionInfo is being used in more than one active operation. Original copy + one
+    // stored in LogSession. Skip the checks.
+    return;
+  }
   time_t last_used_time = session_it->second->get_last_used_time();
   time_t start_time = session_it->second->get_start_time();
   if ((time(0) - last_used_time) > idle_session_duration_) {
@@ -4269,37 +4275,67 @@ void MapDHandler::check_session_exp_unsafe(const SessionMap::iterator& session_i
 
 // NOTE: Only call get_session_it_unsafe() while holding a lock on sessions_mutex_.
 SessionMap::iterator MapDHandler::get_session_it_unsafe(const TSessionId& session) {
-  auto calcite_session_prefix = calcite_->get_session_prefix();
-  auto prefix_length = calcite_session_prefix.size();
-  if (prefix_length) {
-    if (0 == session.compare(0, prefix_length, calcite_session_prefix)) {
-      // call coming from calcite, elevate user to be superuser
-      auto session_it =
-          get_session_from_map(session.substr(prefix_length + 1), sessions_);
-      check_session_exp_unsafe(session_it);
-      session_it->second->make_superuser();
-      session_it->second->update_last_used_time();
-      return session_it;
-    }
+  SessionMap::iterator session_it;
+  const auto calcite_session_prefix = calcite_->get_session_prefix();
+  const auto prefix_length = calcite_session_prefix.size();
+  if (prefix_length && 0 == session.compare(0, prefix_length, calcite_session_prefix)) {
+    session_it = get_session_from_map(session.substr(prefix_length + 1), sessions_);
+    check_session_exp_unsafe(session_it);
+    session_it->second->make_superuser();
+  } else {
+    session_it = get_session_from_map(session, sessions_);
+    check_session_exp_unsafe(session_it);
+    session_it->second->reset_superuser();
   }
-
-  auto session_it = get_session_from_map(session, sessions_);
-  check_session_exp_unsafe(session_it);
-  session_it->second->reset_superuser();
-  session_it->second->update_last_used_time();
   return session_it;
 }
 
-std::shared_ptr<Catalog_Namespace::SessionInfo> MapDHandler::get_session_copy_ptr(
+std::shared_ptr<const Catalog_Namespace::SessionInfo> MapDHandler::get_const_session_ptr(
     const TSessionId& session) {
+  if (session.empty()) {
+    return {};
+  }
   mapd_shared_lock<mapd_shared_mutex> read_lock(sessions_mutex_);
-  auto& session_info_ref = *get_session_it_unsafe(session)->second;
-  return std::make_shared<Catalog_Namespace::SessionInfo>(session_info_ref);
+  return get_session_it_unsafe(session)->second;
 }
 
 Catalog_Namespace::SessionInfo MapDHandler::get_session_copy(const TSessionId& session) {
   mapd_shared_lock<mapd_shared_mutex> read_lock(sessions_mutex_);
   return *get_session_it_unsafe(session)->second;
+}
+
+std::shared_ptr<Catalog_Namespace::SessionInfo> MapDHandler::get_session_copy_ptr(
+    const TSessionId& session) {
+  // Note(Wamsi): We have `get_const_session_ptr` which would return as const SessionInfo
+  // stored in the map. You can use `get_const_session_ptr` instead of the copy of
+  // SessionInfo but beware that it can be changed in teh map. So if you do not care about
+  // the changes then use `get_const_session_ptr` if you do then use this function to get
+  // a copy. We should eventually aim to merge both `get_const_session_ptr` and
+  // `get_session_copy_ptr`.
+  mapd_shared_lock<mapd_shared_mutex> read_lock(sessions_mutex_);
+  auto& session_info_ref = *get_session_it_unsafe(session)->second;
+  return std::make_shared<Catalog_Namespace::SessionInfo>(session_info_ref);
+}
+
+std::shared_ptr<Catalog_Namespace::SessionInfo> MapDHandler::get_session_ptr(
+    const TSessionId& session_id) {
+  // Note(Wamsi): This method will give you a shared_ptr to master SessionInfo itself.
+  // Should be used only when you need to make updates to original SessionInfo object.
+  // Currently used by `update_session_last_used_duration`
+
+  // 1) `session_id` will be empty during intial connect. 2)`sessionmapd iterator` will be
+  // invalid during disconnect. SessionInfo will be erased from map by the time it reaches
+  // here. In both the above cases, we would return `nullptr` and can skip SessionInfo
+  // updates.
+  if (!session_id.empty()) {
+    try {
+      mapd_lock_guard<mapd_shared_mutex> write_lock(sessions_mutex_);
+      return get_session_it_unsafe(session_id)->second;
+    } catch (TMapDException&) {
+      return nullptr;
+    }
+  }
+  return nullptr;
 }
 
 void MapDHandler::check_table_load_privileges(
@@ -5610,11 +5646,18 @@ void LogSession::stdlog(logger::Severity severity, char const* label) {
   }
 }
 
+void LogSession::update_session_last_used_duration() {
+  if (session_ptr_) {
+    session_ptr_->update_last_used_time();
+  }
+}
+
 LogSession::~LogSession() {
+  update_session_last_used_duration();
   stdlog(logger::Severity::INFO, "stdlog");
 }
 
-void LogSession::set_session(SessionMap::mapped_type const& session_ptr) {
+void LogSession::set_session(SessionMap::mapped_type& session_ptr) {
   session_ptr_ = session_ptr;
 }
 

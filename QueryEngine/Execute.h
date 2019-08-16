@@ -21,6 +21,7 @@
 #include "BufferCompaction.h"
 #include "CartesianProduct.h"
 #include "CgenState.h"
+#include "CodeCache.h"
 #include "DateTimeUtils.h"
 #include "Descriptors/QueryFragmentDescriptor.h"
 #include "GroupByAndAggregate.h"
@@ -45,15 +46,11 @@
 #include "../StringDictionary/StringDictionary.h"
 #include "../StringDictionary/StringDictionaryProxy.h"
 
-#include <llvm/ExecutionEngine/ExecutionEngine.h>
-#include <llvm/ExecutionEngine/JITEventListener.h>
 #include <llvm/IR/Function.h>
-#include <llvm/IR/Module.h>
 #include <llvm/IR/Value.h>
 #include <llvm/Linker/Linker.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 #include <rapidjson/document.h>
-#include <boost/functional/hash.hpp>
 
 #include <unistd.h>
 #include <algorithm>
@@ -326,38 +323,7 @@ class UpdateLogForFragment : public RowDataProvider {
 using PerFragmentCB =
     std::function<void(ResultSetPtr, const Fragmenter_Namespace::FragmentInfo&)>;
 
-using LLVMValueVector = std::vector<llvm::Value*>;
-
 class QueryCompilationDescriptor;
-
-class ExecutionEngineWrapper {
- public:
-  ExecutionEngineWrapper();
-  ExecutionEngineWrapper(llvm::ExecutionEngine* execution_engine);
-  ExecutionEngineWrapper(llvm::ExecutionEngine* execution_engine,
-                         const CompilationOptions& co);
-
-  ExecutionEngineWrapper(const ExecutionEngineWrapper& other) = delete;
-  ExecutionEngineWrapper(ExecutionEngineWrapper&& other) = default;
-
-  ExecutionEngineWrapper& operator=(const ExecutionEngineWrapper& other) = delete;
-  ExecutionEngineWrapper& operator=(ExecutionEngineWrapper&& other) = default;
-
-  ExecutionEngineWrapper& operator=(llvm::ExecutionEngine* execution_engine);
-
-  llvm::ExecutionEngine* get() { return execution_engine_.get(); }
-  const llvm::ExecutionEngine* get() const { return execution_engine_.get(); }
-
-  llvm::ExecutionEngine& operator*() { return *execution_engine_; }
-  const llvm::ExecutionEngine& operator*() const { return *execution_engine_; }
-
-  llvm::ExecutionEngine* operator->() { return execution_engine_.get(); }
-  const llvm::ExecutionEngine* operator->() const { return execution_engine_.get(); }
-
- private:
-  std::unique_ptr<llvm::ExecutionEngine> execution_engine_;
-  std::unique_ptr<llvm::JITEventListener> intel_jit_listener_;
-};
 
 class Executor {
   static_assert(sizeof(float) == 4 && sizeof(double) == 8,
@@ -787,6 +753,11 @@ class Executor {
                                                    const bool is_group_by,
                                                    const bool float_argument_input);
 
+  static void addCodeToCache(const CodeCacheKey&,
+                             std::vector<std::tuple<void*, ExecutionEngineWrapper>>,
+                             llvm::Module*,
+                             CodeCache&);
+
  private:
   static ResultSetPtr resultsUnion(ExecutionDispatch& execution_dispatch);
   std::vector<int64_t> getJoinHashTablePtrs(const ExecutorDeviceType device_type,
@@ -950,19 +921,8 @@ class Executor {
       const std::vector<uint64_t>& frag_offsets,
       const size_t frag_idx);
 
-  using CodeCacheKey = std::vector<std::string>;
-  typedef std::vector<
-      std::tuple<void*, ExecutionEngineWrapper, std::unique_ptr<GpuCompilationContext>>>
-      CodeCacheVal;
-  typedef std::pair<CodeCacheVal, llvm::Module*> CodeCacheValWithModule;
-  typedef LruCache<CodeCacheKey, CodeCacheValWithModule, boost::hash<CodeCacheKey>>
-      CodeCache;
   std::vector<std::pair<void*, void*>> getCodeFromCache(const CodeCacheKey&,
                                                         const CodeCache&);
-  void addCodeToCache(const CodeCacheKey&,
-                      std::vector<std::tuple<void*, ExecutionEngineWrapper>>,
-                      llvm::Module*,
-                      CodeCache&);
 
   void addCodeToCache(const CodeCacheKey&,
                       const std::vector<std::tuple<void*, GpuCompilationContext*>>&,

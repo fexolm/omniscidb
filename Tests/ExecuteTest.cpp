@@ -21,6 +21,7 @@
 #include "../QueryEngine/ArrowResultSet.h"
 #include "../QueryEngine/Descriptors/RelAlgExecutionDescriptor.h"
 #include "../QueryEngine/Execute.h"
+#include "../QueryEngine/ResultSetReductionJIT.h"
 #include "../QueryRunner/QueryRunner.h"
 #include "../Shared/ConfigResolve.h"
 #include "../Shared/TimeGM.h"
@@ -1477,6 +1478,17 @@ TEST(Select, Arrays) {
                   std::vector<double>({22.2, 33.3, 44.4}));
     compare_array(run_simple_agg("SELECT arr6_bool FROM array_test WHERE x = 8;", dt),
                   std::vector<int64_t>({1, 0, 1, 0, 1, 0}));
+
+    SKIP_ON_AGGREGATOR(
+        compare_array(
+            run_simple_agg(
+                "SELECT ARRAY[1,2,3,5] from array_test WHERE x = 8 limit 8675309;", dt),
+            std::vector<int64_t>({1, 2, 3, 5})););
+    SKIP_ON_AGGREGATOR(compare_array(
+        run_simple_agg("SELECT ARRAY[2*arr3_i32[1],2*arr3_i32[2],2*arr3_i32[3]] FROM "
+                       "array_test a WHERE x = 8 limit 31337;",
+                       dt),
+        std::vector<int64_t>({40, 60, 80})));
 
     // Simple non-lazy projection
     compare_array(
@@ -16514,6 +16526,7 @@ int main(int argc, char** argv) {
     drop_tables();
     drop_views();
   }
+  ResultSetReductionJIT::clearCache();
   QR::reset();
   return err;
 }

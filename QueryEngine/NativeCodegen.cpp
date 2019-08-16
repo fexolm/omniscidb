@@ -70,15 +70,6 @@ std::unique_ptr<llvm::Module> rt_udf_cpu_module;
 
 namespace {
 
-void verify_function_ir(const llvm::Function* func) {
-  std::stringstream err_ss;
-  llvm::raw_os_ostream err_os(err_ss);
-  if (llvm::verifyFunction(*func, &err_os)) {
-    func->print(llvm::outs());
-    LOG(FATAL) << err_ss.str();
-  }
-}
-
 #if defined(HAVE_CUDA) || !defined(WITH_JIT_DEBUG)
 void eliminate_dead_self_recursive_funcs(
     llvm::Module& M,
@@ -131,6 +122,8 @@ void optimize_ir(llvm::Function* query_func,
 }
 #endif
 
+}  // namespace
+
 template <class T>
 std::string serialize_llvm_object(const T* llvm_obj) {
   std::stringstream ss;
@@ -139,8 +132,6 @@ std::string serialize_llvm_object(const T* llvm_obj) {
   os.flush();
   return ss.str();
 }
-
-}  // namespace
 
 ExecutionEngineWrapper::ExecutionEngineWrapper() {}
 
@@ -165,6 +156,15 @@ ExecutionEngineWrapper& ExecutionEngineWrapper::operator=(
   execution_engine_.reset(execution_engine);
   intel_jit_listener_ = nullptr;
   return *this;
+}
+
+void verify_function_ir(const llvm::Function* func) {
+  std::stringstream err_ss;
+  llvm::raw_os_ostream err_os(err_ss);
+  if (llvm::verifyFunction(*func, &err_os)) {
+    func->print(llvm::outs());
+    LOG(FATAL) << err_ss.str();
+  }
 }
 
 std::vector<std::pair<void*, void*>> Executor::getCodeFromCache(const CodeCacheKey& key,
@@ -243,6 +243,9 @@ ExecutionEngineWrapper CodeGenerator::generateNativeCPUCode(
   llvm::TargetOptions to;
   to.EnableFastISel = true;
   eb.setTargetOptions(to);
+  if (co.opt_level_ == ExecutorOptLevel::ReductionJIT) {
+    eb.setOptLevel(llvm::CodeGenOpt::None);
+  }
 
   ExecutionEngineWrapper execution_engine(eb.create(), co);
   CHECK(execution_engine.get());
@@ -618,16 +621,23 @@ std::map<std::string, std::string> get_device_parameters() {
   }
 
 #ifdef HAVE_CUDA
-  int devCount;
-  cudaGetDeviceCount(&devCount);
-  if (devCount) {
-    cudaDeviceProp props;
-    cudaGetDeviceProperties(&props, 0);  // assuming homogeneous multi-GPU system
-    result.insert(std::make_pair("gpu_name", props.name));
-    result.insert(std::make_pair("gpu_count", std::to_string(devCount)));
-    result.insert(
-        std::make_pair("gpu_compute_capability",
-                       std::to_string(props.major) + "." + std::to_string(props.minor)));
+  int device_count = 0;
+  checkCudaErrors(cuDeviceGetCount(&device_count));
+  if (device_count) {
+    CUdevice device{};
+    char device_name[256];
+    int major = 0, minor = 0;
+    checkCudaErrors(cuDeviceGet(&device, 0));  // assuming homogeneous multi-GPU system
+    checkCudaErrors(cuDeviceGetName(device_name, 256, device));
+    checkCudaErrors(cuDeviceGetAttribute(
+        &major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
+    checkCudaErrors(cuDeviceGetAttribute(
+        &minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device));
+
+    result.insert(std::make_pair("gpu_name", device_name));
+    result.insert(std::make_pair("gpu_count", std::to_string(device_count)));
+    result.insert(std::make_pair("gpu_compute_capability",
+                                 std::to_string(major) + "." + std::to_string(minor)));
     result.insert(std::make_pair("gpu_triple", get_gpu_target_triple_string()));
     result.insert(std::make_pair("gpu_datalayout", get_gpu_data_layout()));
   }
@@ -722,6 +732,8 @@ CodeGenerator::GPUCode CodeGenerator::generateNativeGPUCode(
 
   const auto ptx =
       generatePTX(cuda_llir, gpu_target.nvptx_target_machine, gpu_target.cgen_state);
+
+  LOG(PTX) << "PTX for the GPU:\n" << ptx << "\nEnd of PTX";
 
   auto cubin_result = ptx_to_cubin(ptx, gpu_target.block_size, gpu_target.cuda_mgr);
   auto& option_keys = cubin_result.option_keys;
@@ -873,8 +885,6 @@ void Executor::initializeNVPTXBackend() const {
   nvptx_target_machine_ = CodeGenerator::initializeNVPTXBackend();
 }
 
-namespace {
-
 llvm::Module* read_template_module(llvm::LLVMContext& context) {
   llvm::SMDiagnostic err;
 
@@ -890,6 +900,8 @@ llvm::Module* read_template_module(llvm::LLVMContext& context) {
 
   return module;
 }
+
+namespace {
 
 void bind_pos_placeholders(const std::string& pos_fn_name,
                            const bool use_resume_param,
@@ -1160,12 +1172,7 @@ std::vector<std::string> get_agg_fnames(const std::vector<Analyzer::Expr*>& targ
                                                         : "agg_count");
         break;
       case kSAMPLE: {
-        if ((agg_type_info.is_string() &&
-             agg_type_info.get_compression() == kENCODING_NONE) ||
-            agg_type_info.is_array()) {
-          throw std::runtime_error(
-              "SAMPLE on none encoded strings or arrays not supported yet");
-        }
+        // Note that varlen SAMPLE arguments are handled separately above
         result.emplace_back(agg_type_info.is_fp() ? "agg_id_double" : "agg_id");
         break;
       }
@@ -1767,6 +1774,11 @@ Executor::compileWorkUnit(const std::vector<InputTableInfo>& query_infos,
         serialize_llvm_object(query_func) + serialize_llvm_object(cgen_state_->row_func_);
   }
   verify_function_ir(cgen_state_->row_func_);
+
+  LOG(IR) << query_mem_desc->toString() << "\nGenerated IR\n"
+          << serialize_llvm_object(query_func)
+          << serialize_llvm_object(cgen_state_->row_func_) << "\nEnd of IR";
+
   return std::make_tuple(
       Executor::CompilationResult{
           co.device_type_ == ExecutorDeviceType::CPU

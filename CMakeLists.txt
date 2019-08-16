@@ -247,6 +247,11 @@ endif()
 
 option(ENABLE_DECODERS_BOUNDS_CHECKING "Enable bounds checking for column decoding" OFF)
 
+option(ENABLE_REDUCTION_JIT "Enable JIT for result set reduction" OFF)
+if( ENABLE_REDUCTION_JIT )
+  add_definitions("-DWITH_REDUCTION_JIT")
+endif()
+
 if(ENABLE_STANDALONE_CALCITE)
   add_definitions("-DSTANDALONE_CALCITE")
 endif()
@@ -322,6 +327,10 @@ add_subdirectory(ThirdParty/sqlite3)
 # rdkafka
 find_package(RdKafka REQUIRED)
 include_directories(${RdKafka_INCLUDE_DIRS})
+
+# libarchive
+find_package(LibArchive REQUIRED)
+include_directories(${LibArchive_INCLUDE_DIRS})
 
 # aws-sdk
 option(ENABLE_AWS_S3 "Enable AWS S3 support" ON)

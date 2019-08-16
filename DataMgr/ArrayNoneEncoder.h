@@ -257,13 +257,14 @@ class ArrayNoneEncoder : public Encoder {
   void update_elem_stats(const ArrayDatum& array) {
     if (array.is_null) {
       has_nulls = true;
-      return;
     }
     switch (buffer_->sqlType.get_subtype()) {
       case kBOOLEAN: {
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.boolval = true;
           elem_max.boolval = false;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const bool* bool_array = (bool*)array.pointer;
@@ -279,11 +280,14 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       case kINT: {
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.intval = 1;
           elem_max.intval = 0;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const int32_t* int_array = (int32_t*)array.pointer;
@@ -299,11 +303,14 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       case kSMALLINT: {
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.smallintval = 1;
           elem_max.smallintval = 0;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const int16_t* int_array = (int16_t*)array.pointer;
@@ -319,11 +326,14 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       case kTINYINT: {
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.tinyintval = 1;
           elem_max.tinyintval = 0;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const int8_t* int_array = (int8_t*)array.pointer;
@@ -339,13 +349,16 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       case kBIGINT:
       case kNUMERIC:
       case kDECIMAL: {
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.bigintval = 1;
           elem_max.bigintval = 0;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const int64_t* int_array = (int64_t*)array.pointer;
@@ -361,11 +374,14 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       case kFLOAT: {
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.floatval = 1.0;
           elem_max.floatval = 0.0;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const float* flt_array = (float*)array.pointer;
@@ -381,11 +397,14 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       case kDOUBLE: {
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.doubleval = 1.0;
           elem_max.doubleval = 0.0;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const double* dbl_array = (double*)array.pointer;
@@ -401,13 +420,16 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       case kTIME:
       case kTIMESTAMP:
       case kDATE: {
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.bigintval = 1;
           elem_max.bigintval = 0;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const auto tm_array = reinterpret_cast<int64_t*>(array.pointer);
@@ -423,14 +445,17 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       case kCHAR:
       case kVARCHAR:
       case kTEXT: {
         assert(buffer_->sqlType.get_compression() == kENCODING_DICT);
-        if (!initialized && array.length == 0) {
+        if (!initialized) {
           elem_min.intval = 1;
           elem_max.intval = 0;
+        }
+        if (array.is_null || array.length == 0) {
           break;
         }
         const int32_t* int_array = (int32_t*)array.pointer;
@@ -446,7 +471,8 @@ class ArrayNoneEncoder : public Encoder {
             initialized = true;
           }
         }
-      } break;
+        break;
+      }
       default:
         assert(false);
     }

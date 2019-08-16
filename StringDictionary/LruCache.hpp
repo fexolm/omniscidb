@@ -36,7 +36,7 @@ class LruCache {
     putCommon(it, key);
   }
 
-  const value_t* get(const key_t& key) {
+  value_t* get(const key_t& key) {
     auto it = cache_items_map_.find(key);
     if (it == cache_items_map_.end()) {
       return nullptr;
@@ -53,6 +53,11 @@ class LruCache {
   }
 
   const_list_iterator_t cend() const { return (cache_items_list_.cend()); }
+
+  void clear() {
+    cache_items_list_.clear();
+    cache_items_map_.clear();
+  }
 
  private:
   void putCommon(map_t_iterator& it, key_t const& key) {

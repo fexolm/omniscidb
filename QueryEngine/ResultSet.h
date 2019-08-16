@@ -75,6 +75,8 @@
  * probing is used instead, with a 50% fill rate.
  */
 
+struct ReductionCode;
+
 class ResultSetStorage {
  public:
   ResultSetStorage(const std::vector<TargetInfo>& targets,
@@ -83,7 +85,8 @@ class ResultSetStorage {
                    const bool buff_is_provided);
 
   void reduce(const ResultSetStorage& that,
-              const std::vector<std::string>& serialized_varlen_buffer) const;
+              const std::vector<std::string>& serialized_varlen_buffer,
+              const ReductionCode& reduction_code) const;
 
   void rewriteAggregateBufferOffsets(
       const std::vector<std::string>& serialized_varlen_buffer) const;
@@ -378,7 +381,7 @@ class ResultSet {
 
   std::vector<TargetValue> getRowAtNoTranslations(
       const size_t index,
-      const bool skip_non_lazy_columns = false) const;
+      const std::vector<bool>& targets_to_skip = {}) const;
 
   bool isRowAtEmpty(const size_t index) const;
 
@@ -409,6 +412,8 @@ class ResultSet {
   const QueryMemoryDescriptor& getQueryMemDesc() const;
 
   const std::vector<TargetInfo>& getTargetInfos() const;
+
+  const std::vector<int64_t>& getTargetInitVals() const;
 
   int8_t* getDeviceEstimatorBuffer() const;
 
@@ -494,8 +499,7 @@ class ResultSet {
 
   /*
    * Determines if it is possible to directly form a ColumnarResults class from this
-   * result set, bypassing the default row-wise columnarization. It is currently only
-   * possible for columnar projections.
+   * result set, bypassing the default row-wise columnarization.
    *
    * NOTE: If there exists a permutation vector (i.e., ORDER BY), it becomes equivalent to
    * the row-wise columnarization.
@@ -529,7 +533,7 @@ class ResultSet {
                                     const bool translate_strings,
                                     const bool decimal_to_double,
                                     const bool fixup_count_distinct_pointers,
-                                    const bool skip_non_lazy_columns = false) const;
+                                    const std::vector<bool>& targets_to_skip = {}) const;
 
   size_t parallelRowCount() const;
 
@@ -868,5 +872,25 @@ void fill_empty_key(void* key_ptr, const size_t key_count, const size_t key_widt
 bool can_use_parallel_algorithms(const ResultSet& rows);
 
 bool use_parallel_algorithms(const ResultSet& rows);
+
+int8_t get_width_for_slot(const size_t target_slot_idx,
+                          const bool float_argument_input,
+                          const QueryMemoryDescriptor& query_mem_desc);
+
+size_t get_byteoff_of_slot(const size_t slot_idx,
+                           const QueryMemoryDescriptor& query_mem_desc);
+
+using GroupValueInfo = std::pair<int64_t*, bool>;
+
+GroupValueInfo get_group_value_reduction(int64_t* groups_buffer,
+                                         const uint32_t groups_buffer_entry_count,
+                                         const int64_t* key,
+                                         const uint32_t key_count,
+                                         const size_t key_width,
+                                         const QueryMemoryDescriptor& query_mem_desc,
+                                         const int64_t* that_buff_i64,
+                                         const size_t that_entry_idx,
+                                         const size_t that_entry_count,
+                                         const uint32_t row_size_quad);
 
 #endif  // QUERYENGINE_RESULTSET_H
