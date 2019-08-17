@@ -252,7 +252,7 @@ void remove_prefix(boost::string_view& s) {
 }
 
 template <typename String>
-static const char* get_row(const char* buf,
+static const char* get_row(char* buf,
                            const char* buf_end,
                            const char* entire_buf_end,
                            const CopyParams& copy_params,
@@ -1800,7 +1800,7 @@ static ImportStatus import_thread_delimited(
     const CopyParams& copy_params = importer->get_copy_params();
     const std::list<const ColumnDescriptor*>& col_descs = importer->get_column_descs();
     size_t begin = find_beginning(buffer, begin_pos, end_pos, copy_params);
-    const char* thread_buf = buffer + begin_pos + begin;
+    char* thread_buf = buffer + begin_pos + begin;
     const char* thread_buf_end = buffer + end_pos;
     const char* buf_end = buffer + total_size;
     bool try_single_thread = false;
@@ -1822,7 +1822,7 @@ static ImportStatus import_thread_delimited(
     }
     std::vector<boost::string_view> row;
     size_t row_index_plus_one = 0;
-    for (const char* p = thread_buf; p < thread_buf_end; p++) {
+    for (char* p = thread_buf; p < thread_buf_end; p++) {
       row.clear();
       if (DEBUG_TIMING) {
         us = measure<std::chrono::microseconds>::execution([&]() {
