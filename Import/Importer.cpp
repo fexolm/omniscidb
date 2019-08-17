@@ -252,7 +252,7 @@ void remove_prefix(boost::string_view& s) {
 }
 
 template <typename String>
-static const char* get_row(char* buf,
+static char* get_row(char* buf,
                            const char* buf_end,
                            const char* entire_buf_end,
                            const CopyParams& copy_params,
@@ -260,8 +260,8 @@ static const char* get_row(char* buf,
                            const bool* is_array,
                            std::vector<String>& row,
                            bool& try_single_thread) {
-  const char* field = buf;
-  const char* p;
+  char* field = buf;
+  char* p;
   bool in_quote = false;
   bool in_array = false;
   bool has_escape = false;
@@ -290,18 +290,17 @@ static const char* get_row(char* buf,
           auto s = trim_space<String>(field, p - field);
           row.push_back(s);
         } else {
-          auto field_buf = std::make_unique<char[]>(p - field + 1);
           int j = 0, i = 0;
           for (; i < p - field; i++, j++) {
             if (has_escape && field[i] == copy_params.escape &&
                 field[i + 1] == copy_params.quote) {
-              field_buf[j] = copy_params.quote;
+              field[j] = copy_params.quote;
               i++;
             } else {
-              field_buf[j] = field[i];
+              field[j] = field[i];
             }
           }
-          auto s = trim_space<String>(field_buf.get(), j);
+          auto s = trim_space<String>(field, j);
           if (copy_params.quoted && s.size() > 0 && s.front() == copy_params.quote) {
             remove_prefix(s);
           }
@@ -755,7 +754,8 @@ void TypedImportBuffer::add_value(const ColumnDescriptor* cd,
     case kDATE:
       if (!is_null && (isdigit(val[0]) || val[0] == '-')) {
         SQLTypeInfo ti = cd->columnType;
-        addBigint(parse_numeric(val, ti));
+        Datum d = StringToDatum(val, ti);
+        addBigint(d.bigintval);
       } else {
         if (cd->columnType.get_notnull()) {
           throw std::runtime_error("NULL for column " + cd->columnName);
@@ -2728,10 +2728,10 @@ void Detector::detect_row_delimiter() {
 }
 
 void Detector::split_raw_data() {
-  const char* buf = raw_data.c_str();
-  const char* buf_end = buf + raw_data.size();
+  char* buf = raw_data.data();
+  char* buf_end = buf + raw_data.size();
   bool try_single_thread = false;
-  for (const char* p = buf; p < buf_end; p++) {
+  for (char* p = buf; p < buf_end; p++) {
     std::vector<std::string> row;
     p = get_row<std::string>(
         p, buf_end, buf_end, copy_params, true, nullptr, row, try_single_thread);
@@ -2743,7 +2743,7 @@ void Detector::split_raw_data() {
   if (try_single_thread) {
     copy_params.threads = 1;
     raw_rows.clear();
-    for (const char* p = buf; p < buf_end; p++) {
+    for (char* p = buf; p < buf_end; p++) {
       std::vector<std::string> row;
       p = get_row<std::string>(
           p, buf_end, buf_end, copy_params, true, nullptr, row, try_single_thread);

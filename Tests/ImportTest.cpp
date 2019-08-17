@@ -329,6 +329,8 @@ class ImportTestMiniSort : public ::testing::Test {
 };
 
 void create_minisort_table_on_column(const std::string& column_name) {
+    std::cout << "Create table with column: " << column_name << std::endl;
+
   ASSERT_NO_THROW(run_ddl_statement(
       std::string(create_table_mini_sort) +
       (column_name.size() ? " with (sort_column='" + column_name + "');" : ";")));
@@ -355,6 +357,8 @@ void test_minisort_on_column(const std::string& column_name,
 }
 
 void create_minisort_table_on_column_with_ctas(const std::string& column_name) {
+  std::cout << "Create table with column(ctas): " << column_name << std::endl;
+
   EXPECT_NO_THROW(
       run_ddl_statement(
           "create table sortctas as select * from sortab" +
