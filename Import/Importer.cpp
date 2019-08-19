@@ -46,6 +46,7 @@
 #include <utility>
 #include <vector>
 #include "../QueryEngine/TypePunning.h"
+#include "../Shared/StringToDatum.h"
 #include "../Shared/geo_compression.h"
 #include "../Shared/geo_types.h"
 #include "../Shared/geosupport.h"
@@ -56,7 +57,6 @@
 #include "../Shared/scope.h"
 #include "../Shared/shard_key.h"
 #include "../Shared/thread_count.h"
-#include "../Shared/StringToDatum.h"
 #include "Shared/Logger.h"
 #include "Shared/SqlTypesLayout.h"
 
@@ -134,7 +134,10 @@ using ColumnIdToRenderGroupAnalyzerMapType =
     std::map<int, std::shared_ptr<RenderGroupAnalyzer>>;
 using FeaturePtrVector = std::vector<OGRFeatureUqPtr>;
 
-#define DEBUG_TIMING true
+#ifndef DEBUG_TIMING
+#define DEBUG_TIMING false
+#endif
+
 #define DEBUG_RENDER_GROUP_ANALYZER 0
 #define DEBUG_AWS_AUTHENTICATION 0
 
@@ -253,13 +256,13 @@ void remove_prefix(boost::string_view& s) {
 
 template <typename String>
 static char* get_row(char* buf,
-                           const char* buf_end,
-                           const char* entire_buf_end,
-                           const CopyParams& copy_params,
-                           bool is_begin,
-                           const bool* is_array,
-                           std::vector<String>& row,
-                           bool& try_single_thread) {
+                     const char* buf_end,
+                     const char* entire_buf_end,
+                     const CopyParams& copy_params,
+                     bool is_begin,
+                     const bool* is_array,
+                     std::vector<String>& row,
+                     bool& try_single_thread) {
   char* field = buf;
   char* p;
   bool in_quote = false;
@@ -2012,7 +2015,7 @@ static ImportStatus import_thread_delimited(
     }
   });
   if (DEBUG_TIMING && import_status.rows_completed > 0) {
-LOG(INFO) << "Thread" << std::this_thread::get_id() << ":"
+    LOG(INFO) << "Thread" << std::this_thread::get_id() << ":"
               << import_status.rows_completed << " rows inserted in "
               << (double)ms / 1000.0 << "sec, Insert Time: " << (double)load_ms / 1000.0
               << "sec, get_row: " << (double)total_get_row_time_us / 1000000.0
@@ -3484,9 +3487,7 @@ void DataStreamSink::import_compressed(std::vector<std::string>& file_paths) {
 
       // in future, depending on data types of this uncompressed stream
       // it can be feed into other function such like importParquet, etc
-      auto import_time =
-          measure<>::execution([&]() { ret = importDelimited(file_path, true); });
-      std::cout << "Total import time: " << (double)import_time / 1000  << " sec" << std::endl;
+      ret = importDelimited(file_path, true);
     } catch (...) {
       if (!teptr) {  // no replace
         teptr = std::current_exception();
@@ -3822,7 +3823,6 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
       auto thread_id = stack_thread_ids.top();
       stack_thread_ids.pop();
       // LOG(INFO) << " stack_thread_ids.pop " << thread_id << std::endl;
- 
       threads.push_back(std::async(std::launch::async,
                                    import_thread_delimited,
                                    thread_id,
@@ -3925,9 +3925,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     }
   }
 
-  auto checkpoint_time = measure<>::execution([&]() { checkpoint(start_epoch); });
-
-  std::cout << "Checkpoint time: " << (double)checkpoint_time / 1000 << " sec" << std::endl;
+  checkpoint(start_epoch);
 
   // must set import_status.load_truncated before closing this end of pipe
   // otherwise, the thread on the other end would throw an unwanted 'write()'
