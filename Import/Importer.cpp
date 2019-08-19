@@ -3714,226 +3714,233 @@ ImportStatus Importer::import() {
 
 ImportStatus Importer::importDelimited(const std::string& file_path,
                                        const bool decompressed) {
-  bool load_truncated = false;
-  set_import_status(import_id, import_status);
+  auto checkout_time = measure<>::execution([&](){});                    
+  auto full_time = measure<>::execution([&]() {
+    bool load_truncated = false;
+    set_import_status(import_id, import_status);
 
-  if (!p_file) {
-    p_file = fopen(file_path.c_str(), "rb");
-  }
-  if (!p_file) {
-    throw std::runtime_error("failed to open file '" + file_path +
-                             "': " + strerror(errno));
-  }
-
-  if (!decompressed) {
-    (void)fseek(p_file, 0, SEEK_END);
-    file_size = ftell(p_file);
-  }
-
-  if (copy_params.threads == 0) {
-    max_threads = static_cast<size_t>(sysconf(_SC_NPROCESSORS_CONF));
-  } else {
-    max_threads = static_cast<size_t>(copy_params.threads);
-  }
-
-  // deal with small files
-  size_t alloc_size = copy_params.buffer_size;
-  if (!decompressed && file_size < alloc_size) {
-    alloc_size = file_size;
-  }
-
-  for (size_t i = 0; i < max_threads; i++) {
-    import_buffers_vec.emplace_back();
-    for (const auto cd : loader->get_column_descs()) {
-      import_buffers_vec[i].push_back(std::unique_ptr<TypedImportBuffer>(
-          new TypedImportBuffer(cd, loader->getStringDict(cd))));
+    if (!p_file) {
+      p_file = fopen(file_path.c_str(), "rb");
     }
-  }
-
-  auto scratch_buffer = std::make_unique<char[]>(alloc_size);
-  size_t current_pos = 0;
-  size_t end_pos;
-  bool eof_reached = false;
-  size_t begin_pos = 0;
-
-  (void)fseek(p_file, current_pos, SEEK_SET);
-  size_t size =
-      fread(reinterpret_cast<void*>(scratch_buffer.get()), 1, alloc_size, p_file);
-
-  // make render group analyzers for each poly column
-  ColumnIdToRenderGroupAnalyzerMapType columnIdToRenderGroupAnalyzerMap;
-  auto columnDescriptors = loader->getCatalog().getAllColumnMetadataForTable(
-      loader->getTableDesc()->tableId, false, false, false);
-  for (auto cd : columnDescriptors) {
-    SQLTypes ct = cd->columnType.get_type();
-    if (ct == kPOLYGON || ct == kMULTIPOLYGON) {
-      auto rga = std::make_shared<RenderGroupAnalyzer>();
-      rga->seedFromExistingTableContents(loader, cd->columnName);
-      columnIdToRenderGroupAnalyzerMap[cd->columnId] = rga;
+    if (!p_file) {
+      throw std::runtime_error("failed to open file '" + file_path +
+                               "': " + strerror(errno));
     }
-  }
 
-  ChunkKey chunkKey = {loader->getCatalog().getCurrentDB().dbId,
-                       loader->getTableDesc()->tableId};
-  auto start_epoch = loader->getTableEpoch();
-  {
-    std::list<std::future<ImportStatus>> threads;
+    if (!decompressed) {
+      (void)fseek(p_file, 0, SEEK_END);
+      file_size = ftell(p_file);
+    }
 
-    // use a stack to track thread_ids which must not overlap among threads
-    // because thread_id is used to index import_buffers_vec[]
-    std::stack<size_t> stack_thread_ids;
+    if (copy_params.threads == 0) {
+      max_threads = static_cast<size_t>(sysconf(_SC_NPROCESSORS_CONF));
+    } else {
+      max_threads = static_cast<size_t>(copy_params.threads);
+    }
+
+    // deal with small files
+    size_t alloc_size = copy_params.buffer_size;
+    if (!decompressed && file_size < alloc_size) {
+      alloc_size = file_size;
+    }
+
     for (size_t i = 0; i < max_threads; i++) {
-      stack_thread_ids.push(i);
+      import_buffers_vec.emplace_back();
+      for (const auto cd : loader->get_column_descs()) {
+        import_buffers_vec[i].push_back(std::unique_ptr<TypedImportBuffer>(
+            new TypedImportBuffer(cd, loader->getStringDict(cd))));
+      }
     }
 
-    size_t first_row_index_this_buffer = 0;
+    auto scratch_buffer = std::make_unique<char[]>(alloc_size);
+    size_t current_pos = 0;
+    size_t end_pos;
+    bool eof_reached = false;
+    size_t begin_pos = 0;
 
-    while (size > 0) {
-      CHECK(scratch_buffer);
-      if (eof_reached) {
-        end_pos = size;
-      } else {
-        end_pos = find_end(scratch_buffer.get(), size, copy_params);
+    (void)fseek(p_file, current_pos, SEEK_SET);
+    size_t size =
+        fread(reinterpret_cast<void*>(scratch_buffer.get()), 1, alloc_size, p_file);
+
+    // make render group analyzers for each poly column
+    ColumnIdToRenderGroupAnalyzerMapType columnIdToRenderGroupAnalyzerMap;
+    auto columnDescriptors = loader->getCatalog().getAllColumnMetadataForTable(
+        loader->getTableDesc()->tableId, false, false, false);
+    for (auto cd : columnDescriptors) {
+      SQLTypes ct = cd->columnType.get_type();
+      if (ct == kPOLYGON || ct == kMULTIPOLYGON) {
+        auto rga = std::make_shared<RenderGroupAnalyzer>();
+        rga->seedFromExistingTableContents(loader, cd->columnName);
+        columnIdToRenderGroupAnalyzerMap[cd->columnId] = rga;
       }
-      // unput residual
-      int nresidual = size - end_pos;
-      std::unique_ptr<char[]> unbuf;
-      if (nresidual > 0) {
-        unbuf = std::make_unique<char[]>(nresidual);
-        memcpy(unbuf.get(), scratch_buffer.get() + end_pos, nresidual);
+    }
+
+    ChunkKey chunkKey = {loader->getCatalog().getCurrentDB().dbId,
+                         loader->getTableDesc()->tableId};
+    auto start_epoch = loader->getTableEpoch();
+    {
+      std::list<std::future<ImportStatus>> threads;
+
+      // use a stack to track thread_ids which must not overlap among threads
+      // because thread_id is used to index import_buffers_vec[]
+      std::stack<size_t> stack_thread_ids;
+      for (size_t i = 0; i < max_threads; i++) {
+        stack_thread_ids.push(i);
       }
 
-      // added for true row index on error
-      unsigned int num_rows_this_buffer = 0;
-      {
-        // we could multi-thread this, but not worth it
-        // additional cost here is ~1.4ms per chunk and
-        // probably free because this thread will spend
-        // most of its time waiting for the child threads
-        char* p = scratch_buffer.get() + begin_pos;
-        char* pend = scratch_buffer.get() + end_pos;
-        char d = copy_params.line_delim;
-        while (p < pend) {
-          if (*p++ == d) {
-            num_rows_this_buffer++;
+      size_t first_row_index_this_buffer = 0;
+
+      while (size > 0) {
+        CHECK(scratch_buffer);
+        if (eof_reached) {
+          end_pos = size;
+        } else {
+          end_pos = find_end(scratch_buffer.get(), size, copy_params);
+        }
+        // unput residual
+        int nresidual = size - end_pos;
+        std::unique_ptr<char[]> unbuf;
+        if (nresidual > 0) {
+          unbuf = std::make_unique<char[]>(nresidual);
+          memcpy(unbuf.get(), scratch_buffer.get() + end_pos, nresidual);
+        }
+
+        // added for true row index on error
+        unsigned int num_rows_this_buffer = 0;
+        {
+          // we could multi-thread this, but not worth it
+          // additional cost here is ~1.4ms per chunk and
+          // probably free because this thread will spend
+          // most of its time waiting for the child threads
+          char* p = scratch_buffer.get() + begin_pos;
+          char* pend = scratch_buffer.get() + end_pos;
+          char d = copy_params.line_delim;
+          while (p < pend) {
+            if (*p++ == d) {
+              num_rows_this_buffer++;
+            }
           }
         }
-      }
 
-      // get a thread_id not in use
-      auto thread_id = stack_thread_ids.top();
-      stack_thread_ids.pop();
-      // LOG(INFO) << " stack_thread_ids.pop " << thread_id << std::endl;
-      threads.push_back(std::async(std::launch::async,
-                                   import_thread_delimited,
-                                   thread_id,
-                                   this,
-                                   std::move(scratch_buffer),
-                                   begin_pos,
-                                   end_pos,
-                                   end_pos,
-                                   columnIdToRenderGroupAnalyzerMap,
-                                   first_row_index_this_buffer));
+        // get a thread_id not in use
+        auto thread_id = stack_thread_ids.top();
+        stack_thread_ids.pop();
+        // LOG(INFO) << " stack_thread_ids.pop " << thread_id << std::endl;
+        threads.push_back(std::async(std::launch::async,
+                                     import_thread_delimited,
+                                     thread_id,
+                                     this,
+                                     std::move(scratch_buffer),
+                                     begin_pos,
+                                     end_pos,
+                                     end_pos,
+                                     columnIdToRenderGroupAnalyzerMap,
+                                     first_row_index_this_buffer));
 
-      first_row_index_this_buffer += num_rows_this_buffer;
+        first_row_index_this_buffer += num_rows_this_buffer;
 
-      current_pos += end_pos;
-      scratch_buffer = std::make_unique<char[]>(alloc_size);
-      CHECK(scratch_buffer);
-      memcpy(scratch_buffer.get(), unbuf.get(), nresidual);
-      size = nresidual + fread(scratch_buffer.get() + nresidual,
-                               1,
-                               copy_params.buffer_size - nresidual,
-                               p_file);
-      if (size < copy_params.buffer_size && feof(p_file)) {
-        eof_reached = true;
-      }
+        current_pos += end_pos;
+        scratch_buffer = std::make_unique<char[]>(alloc_size);
+        CHECK(scratch_buffer);
+        memcpy(scratch_buffer.get(), unbuf.get(), nresidual);
+        size = nresidual + fread(scratch_buffer.get() + nresidual,
+                                 1,
+                                 copy_params.buffer_size - nresidual,
+                                 p_file);
+        if (size < copy_params.buffer_size && feof(p_file)) {
+          eof_reached = true;
+        }
 
-      begin_pos = 0;
+        begin_pos = 0;
 
-      while (threads.size() > 0) {
-        int nready = 0;
-        for (std::list<std::future<ImportStatus>>::iterator it = threads.begin();
-             it != threads.end();) {
-          auto& p = *it;
-          std::chrono::milliseconds span(
-              0);  //(std::distance(it, threads.end()) == 1? 1: 0);
-          if (p.wait_for(span) == std::future_status::ready) {
-            auto ret_import_status = p.get();
-            import_status += ret_import_status;
-            // sum up current total file offsets
-            size_t total_file_offset{0};
-            if (decompressed) {
-              std::unique_lock<std::mutex> lock(file_offsets_mutex);
-              for (const auto file_offset : file_offsets) {
-                total_file_offset += file_offset;
+        while (threads.size() > 0) {
+          int nready = 0;
+          for (std::list<std::future<ImportStatus>>::iterator it = threads.begin();
+               it != threads.end();) {
+            auto& p = *it;
+            std::chrono::milliseconds span(
+                0);  //(std::distance(it, threads.end()) == 1? 1: 0);
+            if (p.wait_for(span) == std::future_status::ready) {
+              auto ret_import_status = p.get();
+              import_status += ret_import_status;
+              // sum up current total file offsets
+              size_t total_file_offset{0};
+              if (decompressed) {
+                std::unique_lock<std::mutex> lock(file_offsets_mutex);
+                for (const auto file_offset : file_offsets) {
+                  total_file_offset += file_offset;
+                }
               }
+              // estimate number of rows per current total file offset
+              if (decompressed ? total_file_offset : current_pos) {
+                import_status.rows_estimated =
+                    (decompressed ? (float)total_file_size / total_file_offset
+                                  : (float)file_size / current_pos) *
+                    import_status.rows_completed;
+              }
+              VLOG(3) << "rows_completed " << import_status.rows_completed
+                      << ", rows_estimated " << import_status.rows_estimated
+                      << ", total_file_size " << total_file_size << ", total_file_offset "
+                      << total_file_offset;
+              set_import_status(import_id, import_status);
+              // recall thread_id for reuse
+              stack_thread_ids.push(ret_import_status.thread_id);
+              threads.erase(it++);
+              ++nready;
+            } else {
+              ++it;
             }
-            // estimate number of rows per current total file offset
-            if (decompressed ? total_file_offset : current_pos) {
-              import_status.rows_estimated =
-                  (decompressed ? (float)total_file_size / total_file_offset
-                                : (float)file_size / current_pos) *
-                  import_status.rows_completed;
-            }
-            VLOG(3) << "rows_completed " << import_status.rows_completed
-                    << ", rows_estimated " << import_status.rows_estimated
-                    << ", total_file_size " << total_file_size << ", total_file_offset "
-                    << total_file_offset;
-            set_import_status(import_id, import_status);
-            // recall thread_id for reuse
-            stack_thread_ids.push(ret_import_status.thread_id);
-            threads.erase(it++);
-            ++nready;
-          } else {
-            ++it;
+          }
+
+          if (nready == 0) {
+            std::this_thread::yield();
+          }
+
+          // on eof, wait all threads to finish
+          if (0 == size) {
+            continue;
+          }
+
+          // keep reading if any free thread slot
+          // this is one of the major difference from old threading model !!
+          if (threads.size() < max_threads) {
+            break;
           }
         }
 
-        if (nready == 0) {
-          std::this_thread::yield();
+        if (import_status.rows_rejected > copy_params.max_reject) {
+          load_truncated = true;
+          load_failed = true;
+          LOG(ERROR) << "Maximum rows rejected exceeded. Halting load";
+          break;
         }
-
-        // on eof, wait all threads to finish
-        if (0 == size) {
-          continue;
-        }
-
-        // keep reading if any free thread slot
-        // this is one of the major difference from old threading model !!
-        if (threads.size() < max_threads) {
+        if (load_failed) {
+          load_truncated = true;
+          LOG(ERROR) << "A call to the Loader::load failed, Please review the logs for "
+                        "more details";
           break;
         }
       }
 
-      if (import_status.rows_rejected > copy_params.max_reject) {
-        load_truncated = true;
-        load_failed = true;
-        LOG(ERROR) << "Maximum rows rejected exceeded. Halting load";
-        break;
-      }
-      if (load_failed) {
-        load_truncated = true;
-        LOG(ERROR) << "A call to the Loader::load failed, Please review the logs for "
-                      "more details";
-        break;
+      // join dangling threads in case of LOG(ERROR) above
+      for (auto& p : threads) {
+        p.wait();
       }
     }
 
-    // join dangling threads in case of LOG(ERROR) above
-    for (auto& p : threads) {
-      p.wait();
-    }
-  }
+    checkout_time = measure<>::execution([&](){checkpoint(start_epoch)});
 
-  // must set import_status.load_truncated before closing this end of pipe
-  // otherwise, the thread on the other end would throw an unwanted 'write()'
-  // exception
-  mapd_lock_guard<mapd_shared_mutex> write_lock(status_mutex);
-  import_status.load_truncated = load_truncated;
+    // must set import_status.load_truncated before closing this end of pipe
+    // otherwise, the thread on the other end would throw an unwanted 'write()'
+    // exception
+    mapd_lock_guard<mapd_shared_mutex> write_lock(status_mutex);
+    import_status.load_truncated = load_truncated;
 
-  fclose(p_file);
-  p_file = nullptr;
+    fclose(p_file);
+    p_file = nullptr;
+  });
+  std::cout << "Execution time: " << (double)(full_time - checkout_time) / 1000 << "sec" << std::endl;
+  std::cout << "Checkout time: " << (double)(checkout_time) / 1000 << "sec" << std::endl;
   return import_status;
 }
 
