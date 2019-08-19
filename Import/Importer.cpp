@@ -3926,8 +3926,6 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     }
   }
 
-  checkpoint(start_epoch);
-
   // must set import_status.load_truncated before closing this end of pipe
   // otherwise, the thread on the other end would throw an unwanted 'write()'
   // exception
