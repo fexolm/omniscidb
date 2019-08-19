@@ -71,6 +71,8 @@
 #include "../Archive/S3Archive.h"
 #include "ArrowImporter.h"
 
+#include <tbb/pipeline.h>
+
 inline auto get_filesize(const std::string& file_path) {
   boost::filesystem::path boost_file_path{file_path};
   boost::system::error_code ec;
@@ -1773,19 +1775,19 @@ void Importer::set_geo_physical_import_buffer_columnar(
 }
 
 static ImportStatus import_thread_delimited(
-    int thread_id,
     Importer* importer,
-    std::unique_ptr<char[]> scratch_buffer,
+    std::shared_ptr<std::vector<char>> scratch_buffer,
     size_t begin_pos,
     size_t end_pos,
     size_t total_size,
-    const ColumnIdToRenderGroupAnalyzerMapType& columnIdToRenderGroupAnalyzerMap,
-    size_t first_row_index_this_buffer) {
+    const ColumnIdToRenderGroupAnalyzerMapType* columnIdToRenderGroupAnalyzerMap,
+    size_t first_row_index_this_buffer,
+    Loader* loader) {
   ImportStatus import_status;
   int64_t total_get_row_time_us = 0;
   int64_t total_str_to_val_time_us = 0;
   CHECK(scratch_buffer);
-  auto buffer = scratch_buffer.get();
+  auto buffer = scratch_buffer->data();
   auto load_ms = measure<>::execution([]() {});
   auto ms = measure<>::execution([&]() {
     const CopyParams& copy_params = importer->get_copy_params();
@@ -1795,8 +1797,11 @@ static ImportStatus import_thread_delimited(
     const char* thread_buf_end = buffer + end_pos;
     const char* buf_end = buffer + total_size;
     bool try_single_thread = false;
-    std::vector<std::unique_ptr<TypedImportBuffer>>& import_buffers =
-        importer->get_import_buffers(thread_id);
+    std::vector<std::unique_ptr<TypedImportBuffer>> import_buffers;
+    for (const auto cd : loader->get_column_descs()) {
+      import_buffers.push_back(std::unique_ptr<TypedImportBuffer>(
+          new TypedImportBuffer(cd, loader->getStringDict(cd))));
+    }
     auto us = measure<std::chrono::microseconds>::execution([&]() {});
     int phys_cols = 0;
     int point_cols = 0;
@@ -1956,12 +1961,12 @@ static ImportStatus import_thread_delimited(
                   }
                 }
 
-                if (columnIdToRenderGroupAnalyzerMap.size()) {
+                if (columnIdToRenderGroupAnalyzerMap->size()) {
                   if (col_type == kPOLYGON || col_type == kMULTIPOLYGON) {
                     if (ring_sizes.size()) {
                       // get a suitable render group for these poly coords
-                      auto rga_it = columnIdToRenderGroupAnalyzerMap.find(cd->columnId);
-                      CHECK(rga_it != columnIdToRenderGroupAnalyzerMap.end());
+                      auto rga_it = columnIdToRenderGroupAnalyzerMap->find(cd->columnId);
+                      CHECK(rga_it != columnIdToRenderGroupAnalyzerMap->end());
                       render_group =
                           (*rga_it).second->insertBoundsAndReturnRenderGroup(bounds);
                     } else {
@@ -2011,10 +2016,6 @@ static ImportStatus import_thread_delimited(
               << "sec, str_to_val: " << (double)total_str_to_val_time_us / 1000000.0
               << "sec" << std::endl;
   }
-
-  import_status.thread_id = thread_id;
-  // LOG(INFO) << " return " << import_status.thread_id << std::endl;
-
   return import_status;
 }
 
@@ -3700,6 +3701,17 @@ ImportStatus Importer::import() {
   return DataStreamSink::archivePlumber();
 }
 
+struct ImportDelimitedParams {
+  Importer* importer;
+  std::shared_ptr<std::vector<char>> scratch_buffer;
+  size_t begin_pos;
+  size_t end_pos;
+  size_t total_size;
+  const ColumnIdToRenderGroupAnalyzerMapType* columnIdToRenderGroupAnalyzerMap;
+  size_t first_row_index_this_buffer;
+  Loader* loader;
+};
+
 ImportStatus Importer::importDelimited(const std::string& file_path,
                                        const bool decompressed) {
   bool load_truncated = false;
@@ -3730,15 +3742,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     alloc_size = file_size;
   }
 
-  for (size_t i = 0; i < max_threads; i++) {
-    import_buffers_vec.emplace_back();
-    for (const auto cd : loader->get_column_descs()) {
-      import_buffers_vec[i].push_back(std::unique_ptr<TypedImportBuffer>(
-          new TypedImportBuffer(cd, loader->getStringDict(cd))));
-    }
-  }
-
-  auto scratch_buffer = std::make_unique<char[]>(alloc_size);
+  auto scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
   size_t current_pos = 0;
   size_t end_pos;
   bool eof_reached = false;
@@ -3746,7 +3750,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
   (void)fseek(p_file, current_pos, SEEK_SET);
   size_t size =
-      fread(reinterpret_cast<void*>(scratch_buffer.get()), 1, alloc_size, p_file);
+      fread(reinterpret_cast<void*>(scratch_buffer->data()), 1, alloc_size, p_file);
 
   // make render group analyzers for each poly column
   ColumnIdToRenderGroupAnalyzerMapType columnIdToRenderGroupAnalyzerMap;
@@ -3763,159 +3767,88 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
   ChunkKey chunkKey = {loader->getCatalog().getCurrentDB().dbId,
                        loader->getTableDesc()->tableId};
+
   auto start_epoch = loader->getTableEpoch();
   {
-    std::list<std::future<ImportStatus>> threads;
-
-    // use a stack to track thread_ids which must not overlap among threads
-    // because thread_id is used to index import_buffers_vec[]
-    std::stack<size_t> stack_thread_ids;
-    for (size_t i = 0; i < max_threads; i++) {
-      stack_thread_ids.push(i);
-    }
-
     size_t first_row_index_this_buffer = 0;
 
-    while (size > 0) {
-      CHECK(scratch_buffer);
-      if (eof_reached) {
-        end_pos = size;
-      } else {
-        end_pos = find_end(scratch_buffer.get(), size, copy_params);
-      }
-      // unput residual
-      int nresidual = size - end_pos;
-      std::unique_ptr<char[]> unbuf;
-      if (nresidual > 0) {
-        unbuf = std::make_unique<char[]>(nresidual);
-        memcpy(unbuf.get(), scratch_buffer.get() + end_pos, nresidual);
-      }
-
-      // added for true row index on error
-      unsigned int num_rows_this_buffer = 0;
-      {
-        // we could multi-thread this, but not worth it
-        // additional cost here is ~1.4ms per chunk and
-        // probably free because this thread will spend
-        // most of its time waiting for the child threads
-        char* p = scratch_buffer.get() + begin_pos;
-        char* pend = scratch_buffer.get() + end_pos;
-        char d = copy_params.line_delim;
-        while (p < pend) {
-          if (*p++ == d) {
-            num_rows_this_buffer++;
-          }
-        }
-      }
-
-      // get a thread_id not in use
-      auto thread_id = stack_thread_ids.top();
-      stack_thread_ids.pop();
-      // LOG(INFO) << " stack_thread_ids.pop " << thread_id << std::endl;
-
-      threads.push_back(std::async(std::launch::async,
-                                   import_thread_delimited,
-                                   thread_id,
-                                   this,
-                                   std::move(scratch_buffer),
-                                   begin_pos,
-                                   end_pos,
-                                   end_pos,
-                                   columnIdToRenderGroupAnalyzerMap,
-                                   first_row_index_this_buffer));
-
-      first_row_index_this_buffer += num_rows_this_buffer;
-
-      current_pos += end_pos;
-      scratch_buffer = std::make_unique<char[]>(alloc_size);
-      CHECK(scratch_buffer);
-      memcpy(scratch_buffer.get(), unbuf.get(), nresidual);
-      size = nresidual + fread(scratch_buffer.get() + nresidual,
-                               1,
-                               copy_params.buffer_size - nresidual,
-                               p_file);
-      if (size < copy_params.buffer_size && feof(p_file)) {
-        eof_reached = true;
-      }
-
-      begin_pos = 0;
-
-      while (threads.size() > 0) {
-        int nready = 0;
-        for (std::list<std::future<ImportStatus>>::iterator it = threads.begin();
-             it != threads.end();) {
-          auto& p = *it;
-          std::chrono::milliseconds span(
-              0);  //(std::distance(it, threads.end()) == 1? 1: 0);
-          if (p.wait_for(span) == std::future_status::ready) {
-            auto ret_import_status = p.get();
-            import_status += ret_import_status;
-            // sum up current total file offsets
-            size_t total_file_offset{0};
-            if (decompressed) {
-              std::unique_lock<std::mutex> lock(file_offsets_mutex);
-              for (const auto file_offset : file_offsets) {
-                total_file_offset += file_offset;
+    tbb::parallel_pipeline(
+        max_threads,
+        tbb::make_filter<void, ImportDelimitedParams>(
+            tbb::filter::serial_in_order,
+            [&](tbb::flow_control& fc) {
+              ImportDelimitedParams res;
+              if (size <= 0) {
+                fc.stop();
+                return res;
               }
-            }
-            // estimate number of rows per current total file offset
-            if (decompressed ? total_file_offset : current_pos) {
-              import_status.rows_estimated =
-                  (decompressed ? (float)total_file_size / total_file_offset
-                                : (float)file_size / current_pos) *
-                  import_status.rows_completed;
-            }
-            VLOG(3) << "rows_completed " << import_status.rows_completed
-                    << ", rows_estimated " << import_status.rows_estimated
-                    << ", total_file_size " << total_file_size << ", total_file_offset "
-                    << total_file_offset;
-            set_import_status(import_id, import_status);
-            // recall thread_id for reuse
-            stack_thread_ids.push(ret_import_status.thread_id);
-            threads.erase(it++);
-            ++nready;
-          } else {
-            ++it;
-          }
-        }
+              if (eof_reached) {
+                end_pos = size;
+              } else {
+                end_pos = find_end(scratch_buffer->data(), size, copy_params);
+              }
+              int nresidual = size - end_pos;
+              std::unique_ptr<char[]> unbuf;
+              if (nresidual > 0) {
+                unbuf = std::make_unique<char[]>(nresidual);
+                memcpy(unbuf.get(), scratch_buffer->data() + end_pos, nresidual);
+              }
+              unsigned int num_rows_this_buffer = 0;
+              {
+                // we could multi-thread this, but not worth it
+                // additional cost here is ~1.4ms per chunk and
+                // probably free because this thread will spend
+                // most of its time waiting for the child threads
+                char* p = scratch_buffer->data() + begin_pos;
+                char* pend = scratch_buffer->data() + end_pos;
+                char d = copy_params.line_delim;
+                while (p < pend) {
+                  if (*p++ == d) {
+                    num_rows_this_buffer++;
+                  }
+                }
+              }
+              res.importer = this;
+              res.scratch_buffer = scratch_buffer;
+              res.begin_pos = begin_pos;
+              res.end_pos = end_pos;
+              res.total_size = end_pos;
+              res.columnIdToRenderGroupAnalyzerMap = &columnIdToRenderGroupAnalyzerMap;
+              res.first_row_index_this_buffer = first_row_index_this_buffer;
+              res.loader = loader.get();
 
-        if (nready == 0) {
-          std::this_thread::yield();
-        }
+              first_row_index_this_buffer += num_rows_this_buffer;
 
-        // on eof, wait all threads to finish
-        if (0 == size) {
-          continue;
-        }
+              current_pos += end_pos;
+              scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
+              CHECK(scratch_buffer);
+              memcpy(scratch_buffer->data(), unbuf.get(), nresidual);
+              size = nresidual + fread(scratch_buffer->data() + nresidual,
+                                       1,
+                                       copy_params.buffer_size - nresidual,
+                                       p_file);
+              if (size < copy_params.buffer_size && feof(p_file)) {
+                eof_reached = true;
+              }
 
-        // keep reading if any free thread slot
-        // this is one of the major difference from old threading model !!
-        if (threads.size() < max_threads) {
-          break;
-        }
-      }
-
-      if (import_status.rows_rejected > copy_params.max_reject) {
-        load_truncated = true;
-        load_failed = true;
-        LOG(ERROR) << "Maximum rows rejected exceeded. Halting load";
-        break;
-      }
-      if (load_failed) {
-        load_truncated = true;
-        LOG(ERROR) << "A call to the Loader::load failed, Please review the logs for "
-                      "more details";
-        break;
-      }
-    }
-
-    // join dangling threads in case of LOG(ERROR) above
-    for (auto& p : threads) {
-      p.wait();
-    }
+              begin_pos = 0;
+              return res;
+            }) &
+            tbb::make_filter<ImportDelimitedParams, ImportStatus>(
+                tbb::filter::parallel,
+                [](ImportDelimitedParams params) {
+                  return import_thread_delimited(params.importer,
+                                                 params.scratch_buffer,
+                                                 params.begin_pos,
+                                                 params.end_pos,
+                                                 params.total_size,
+                                                 params.columnIdToRenderGroupAnalyzerMap,
+                                                 params.first_row_index_this_buffer,
+                                                 params.loader);
+                }) &
+            tbb::make_filter<ImportStatus, void>(tbb::filter::serial_in_order,
+                                                 [](ImportStatus status) {}));
   }
-
-  checkpoint(start_epoch);
 
   // must set import_status.load_truncated before closing this end of pipe
   // otherwise, the thread on the other end would throw an unwanted 'write()'
