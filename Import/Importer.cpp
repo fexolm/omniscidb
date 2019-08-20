@@ -3834,10 +3834,10 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
               begin_pos = 0;
               return res;
             }) &
-            tbb::make_filter<ImportDelimitedParams, ImportStatus>(
+            tbb::make_filter<ImportDelimitedParams, void>(
                 tbb::filter::parallel,
                 [](ImportDelimitedParams params) {
-                  return import_thread_delimited(params.importer,
+                  import_thread_delimited(params.importer,
                                                  params.scratch_buffer,
                                                  params.begin_pos,
                                                  params.end_pos,
