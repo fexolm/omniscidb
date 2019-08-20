@@ -8,14 +8,12 @@ if(ENABLE_IMPORT_PARQUET)
   list(APPEND IMPORT_LIBRARIES "${Parquet_LIBRARIES}")
 endif()
 
-find_package(TBB)
-
-include_directories(${TBB_INCLUDE_DIRS})
+find_package(TBB REQUIRED tbb tbbmalloc tbbmalloc_proxy)
 
 add_library(CsvImport Importer.cpp Importer.h ${S3Archive})
 
 target_link_libraries(CsvImport mapd_thrift Shared Catalog Chunk DataMgr StringDictionary ${GDAL_LIBRARIES} ${CMAKE_DL_LIBS}
- ${LibArchive_LIBRARIES} ${IMPORT_LIBRARIES} ${Arrow_LIBRARIES} ${TBB_LIBRARIES})
+ ${LibArchive_LIBRARIES} ${IMPORT_LIBRARIES} ${Arrow_LIBRARIES} TBB::tbb TBB::tbbmalloc_proxy)
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/ThirdParty/gdal-data DESTINATION "ThirdParty")
 add_custom_target(gdal-data ALL COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/ThirdParty/gdal-data" "${CMAKE_BINARY_DIR}/ThirdParty/gdal-data")
