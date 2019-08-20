@@ -3845,9 +3845,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                                  params.columnIdToRenderGroupAnalyzerMap,
                                                  params.first_row_index_this_buffer,
                                                  params.loader);
-                }) &
-            tbb::make_filter<ImportStatus, void>(tbb::filter::serial_in_order,
-                                                 [](ImportStatus status) {}));
+                }));
   }
 
   // must set import_status.load_truncated before closing this end of pipe
