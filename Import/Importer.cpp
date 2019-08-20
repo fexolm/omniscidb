@@ -3837,7 +3837,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
             tbb::make_filter<ImportDelimitedParams, void>(
                 tbb::filter::parallel,
                 [](ImportDelimitedParams params) {
-                  import_thread_delimited(params.importer,
+                  auto status = import_thread_delimited(params.importer,
                                                  params.scratch_buffer,
                                                  params.begin_pos,
                                                  params.end_pos,
@@ -3845,6 +3845,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                                  params.columnIdToRenderGroupAnalyzerMap,
                                                  params.first_row_index_this_buffer,
                                                  params.loader);
+                  std::cout << "Completed: " << status.rows_completed << " Rejected: " << status.rows_rejected << std::endl;
                 }));
   }
 
