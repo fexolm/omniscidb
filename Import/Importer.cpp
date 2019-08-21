@@ -3815,10 +3815,10 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                     // additional cost here is ~1.4ms per chunk and
                     // probably free because this thread will spend
                     // most of its time waiting for the child threads
-                    char* p = unbuf;
-                    char* pend = unbuf + unbuf->size();
+                    auto p = unbuf->begin();
+                    auto pend = unbuf->end();
                     char d = copy_params.line_delim;
-                    while (p < pend) {
+                    while (p != pend) {
                       if (*p++ == d) {
                         num_rows_this_buffer++;
                       }
