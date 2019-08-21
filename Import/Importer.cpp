@@ -3797,7 +3797,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
             }) &
             tbb::make_filter<std::shared_ptr<std::vector<char>>, ImportDelimitedParams>(
                 tbb::filter::serial_in_order,
-                [&](std::shared_ptr<std::vector<char>> scratch_buffer) mutable {
+                [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
                   ImportDelimitedParams res;
                   int end_pos;
                   auto size = scratch_buffer->size();
