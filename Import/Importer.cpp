@@ -74,6 +74,9 @@
 #include "Utils/StringConversions.h"
 
 #include <tbb/pipeline.h>
+#include <atomic>
+#include <unistd.h>
+
 
 inline auto get_filesize(const std::string& file_path) {
   boost::filesystem::path boost_file_path{file_path};
@@ -3779,6 +3782,16 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     int nresidual = 0;
     auto unbuf = std::make_shared<std::vector<char>>(alloc_size);
 
+    std::atomic<int> threads = 0;
+    bool working = true;
+
+    std::thread t([&](){
+      while(working) {
+        std::cout << "Using " << threads.load() << " threads" << std::endl;
+        usleep(1000);
+      }
+    });
+
     tbb::parallel_pipeline(
         max_threads,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
@@ -3845,7 +3858,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   return res;
                 }) &
             tbb::make_filter<ImportDelimitedParams, void>(
-                tbb::filter::parallel, [](ImportDelimitedParams params) {
+                threads++; tbb::filter::parallel, [](ImportDelimitedParams params) {
                   auto status =
                       import_thread_delimited(params.importer,
                                               params.scratch_buffer,
@@ -3855,8 +3868,11 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                               params.columnIdToRenderGroupAnalyzerMap,
                                               params.first_row_index_this_buffer,
                                               params.loader);
+                  threads--;
                 }));
   }
+
+  working = false;
 
   // must set import_status.load_truncated before closing this end of pipe
   // otherwise, the thread on the other end would throw an unwanted 'write()'
