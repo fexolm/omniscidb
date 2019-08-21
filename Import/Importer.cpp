@@ -3855,8 +3855,6 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                               params.columnIdToRenderGroupAnalyzerMap,
                                               params.first_row_index_this_buffer,
                                               params.loader);
-                  std::cout << "Completed: " << status.rows_completed
-                            << " Rejected: " << status.rows_rejected << std::endl;
                 }));
   }
 
