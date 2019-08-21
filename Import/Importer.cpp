@@ -3754,15 +3754,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     alloc_size = file_size;
   }
 
-  auto scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
-  size_t current_pos = 0;
-  size_t end_pos;
-  bool eof_reached = false;
-  size_t begin_pos = 0;
-
   (void)fseek(p_file, current_pos, SEEK_SET);
-  size_t size =
-      fread(reinterpret_cast<void*>(scratch_buffer->data()), 1, alloc_size, p_file);
 
   // make render group analyzers for each poly column
   ColumnIdToRenderGroupAnalyzerMapType columnIdToRenderGroupAnalyzerMap;
@@ -3784,80 +3776,91 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
   {
     size_t first_row_index_this_buffer = 0;
 
+    int nresidual = 0;
+    std::shared_ptr<std::vector<char>> unbuf(alloc_size);
+
     tbb::parallel_pipeline(
         max_threads,
-        tbb::make_filter<void, ImportDelimitedParams>(
+        tbb::make_filter < void,
+        std::pair<std::shared_ptr<std::vector<char>>>(
             tbb::filter::serial_in_order,
             [&](tbb::flow_control& fc) {
-              ImportDelimitedParams res;
+              auto scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
+              size_t size = fread(
+                  reinterpret_cast<void*>(scratch_buffer->data()), 1, alloc_size, p_file);
+
               if (size <= 0) {
                 fc.stop();
-                return res;
+                return nullptr;
               }
-              if (eof_reached) {
-                end_pos = size;
-              } else {
-                end_pos = find_end(scratch_buffer->data(), size, copy_params);
-              }
-              int nresidual = size - end_pos;
-              std::unique_ptr<char[]> unbuf;
-              if (nresidual > 0) {
-                unbuf = std::make_unique<char[]>(nresidual);
-                memcpy(unbuf.get(), scratch_buffer->data() + end_pos, nresidual);
-              }
-              unsigned int num_rows_this_buffer = 0;
-              {
-                // we could multi-thread this, but not worth it
-                // additional cost here is ~1.4ms per chunk and
-                // probably free because this thread will spend
-                // most of its time waiting for the child threads
-                char* p = scratch_buffer->data() + begin_pos;
-                char* pend = scratch_buffer->data() + end_pos;
-                char d = copy_params.line_delim;
-                while (p < pend) {
-                  if (*p++ == d) {
-                    num_rows_this_buffer++;
-                  }
-                }
-              }
-              res.importer = this;
-              res.scratch_buffer = scratch_buffer;
-              res.begin_pos = begin_pos;
-              res.end_pos = end_pos;
-              res.total_size = end_pos;
-              res.columnIdToRenderGroupAnalyzerMap = &columnIdToRenderGroupAnalyzerMap;
-              res.first_row_index_this_buffer = first_row_index_this_buffer;
-              res.loader = loader.get();
-
-              first_row_index_this_buffer += num_rows_this_buffer;
-
-              current_pos += end_pos;
-              scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
-              CHECK(scratch_buffer);
-              memcpy(scratch_buffer->data(), unbuf.get(), nresidual);
-              size = nresidual + fread(scratch_buffer->data() + nresidual,
-                                       1,
-                                       copy_params.buffer_size - nresidual,
-                                       p_file);
-              if (size < copy_params.buffer_size && feof(p_file)) {
-                eof_reached = true;
-              }
-
-              begin_pos = 0;
-              return res;
+              scratch_buffer->resize(size);
+              return scratch_buffer;
             }) &
+            tbb::make_filter<std::shared_ptr<std::vector<char>>, ImportDelimitedParams>(
+                tbb::filter::serial_in_order,
+                [&](std::shared_ptr<std::vector<char>> scratch_buffer) mutable {
+                  ImportDelimitedParams res;
+                  int end_pos;
+                  auto size = scratch_buffer->size();
+                  if (size < copy_params.buffer_size) {
+                    end_pos = size;
+                  } else {
+                    end_pos = find_end(scratch_buffer->data(), size, copy_params);
+                  }
+
+                  memcpy(unbuf.get() + nresidual, scratch_buffer->data(), end);
+
+                  unsigned int num_rows_this_buffer = 0;
+                  {
+                    // we could multi-thread this, but not worth it
+                    // additional cost here is ~1.4ms per chunk and
+                    // probably free because this thread will spend
+                    // most of its time waiting for the child threads
+                    char* p = scratch_buffer->data() + begin_pos;
+                    char* pend = scratch_buffer->data() + end_pos;
+                    char d = copy_params.line_delim;
+                    while (p < pend) {
+                      if (*p++ == d) {
+                        num_rows_this_buffer++;
+                      }
+                    }
+                  }
+
+                  res.importer = this;
+                  res.scratch_buffer = unbuf;
+                  res.begin_pos = begin_pos;
+                  res.end_pos = end_pos;
+                  res.total_size = end_pos;
+                  res.columnIdToRenderGroupAnalyzerMap =
+                      &columnIdToRenderGroupAnalyzerMap;
+                  res.first_row_index_this_buffer = first_row_index_this_buffer;
+                  res.loader = loader.get();
+
+                  first_row_index_this_buffer += num_rows_this_buffer;
+
+                  current_pos += end_pos;
+
+                  nresidual = size - end_pos;
+                  unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
+                  if (nresidual > 0) {
+                    memcpy(unbuf.get(), scratch_buffer->data() + end_pos, nresidual);
+                  }
+                  return res;
+                }) &
             tbb::make_filter<ImportDelimitedParams, void>(
                 tbb::filter::parallel,
                 [](ImportDelimitedParams params) {
-                  auto status = import_thread_delimited(params.importer,
-                                                 params.scratch_buffer,
-                                                 params.begin_pos,
-                                                 params.end_pos,
-                                                 params.total_size,
-                                                 params.columnIdToRenderGroupAnalyzerMap,
-                                                 params.first_row_index_this_buffer,
-                                                 params.loader);
-                  std::cout << "Completed: " << status.rows_completed << " Rejected: " << status.rows_rejected << std::endl;
+                  auto status =
+                      import_thread_delimited(params.importer,
+                                              params.scratch_buffer,
+                                              params.begin_pos,
+                                              params.end_pos,
+                                              params.total_size,
+                                              params.columnIdToRenderGroupAnalyzerMap,
+                                              params.first_row_index_this_buffer,
+                                              params.loader);
+                  std::cout << "Completed: " << status.rows_completed
+                            << " Rejected: " << status.rows_rejected << std::endl;
                 }));
   }
 
