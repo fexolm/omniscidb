@@ -3754,7 +3754,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     alloc_size = file_size;
   }
 
-  (void)fseek(p_file, current_pos, SEEK_SET);
+  (void)fseek(p_file, 0, SEEK_SET);
 
   // make render group analyzers for each poly column
   ColumnIdToRenderGroupAnalyzerMapType columnIdToRenderGroupAnalyzerMap;
@@ -3777,7 +3777,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     size_t first_row_index_this_buffer = 0;
 
     int nresidual = 0;
-    std::shared_ptr<std::vector<char>> unbuf(alloc_size);
+    auto unbuf = std::make_shared<std::vector<char>>(alloc_size);
 
     tbb::parallel_pipeline(
         max_threads,
