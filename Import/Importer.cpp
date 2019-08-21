@@ -3790,7 +3790,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
               if (size <= 0) {
                 fc.stop();
-                return nullptr;
+                return std::make_shared<std::vector<char>>();
               }
               scratch_buffer->resize(size);
               return scratch_buffer;
@@ -3807,8 +3807,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                     end_pos = find_end(scratch_buffer->data(), size, copy_params);
                   }
 
-                  memcpy(unbuf.get() + nresidual, scratch_buffer->data(), end_pos);
-                  unbuf.resize(nresidual + end_pos);
+                  memcpy(unbuf->data() + nresidual, scratch_buffer->data(), end_pos);
+                  unbuf->resize(nresidual + end_pos);
                   unsigned int num_rows_this_buffer = 0;
                   {
                     // we could multi-thread this, but not worth it
@@ -3816,7 +3816,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                     // probably free because this thread will spend
                     // most of its time waiting for the child threads
                     char* p = unbuf;
-                    char* pend = unbuf + unbuf.size();
+                    char* pend = unbuf + unbuf->size();
                     char d = copy_params.line_delim;
                     while (p < pend) {
                       if (*p++ == d) {
@@ -3828,8 +3828,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   res.importer = this;
                   res.scratch_buffer = unbuf;
                   res.begin_pos = 0;
-                  res.end_pos = unbuf.size();
-                  res.total_size = unbuf.size();
+                  res.end_pos = unbuf->size();
+                  res.total_size = unbuf->size();
                   res.columnIdToRenderGroupAnalyzerMap =
                       &columnIdToRenderGroupAnalyzerMap;
                   res.first_row_index_this_buffer = first_row_index_this_buffer;
@@ -3840,7 +3840,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   nresidual = size - end_pos;
                   unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
                   if (nresidual > 0) {
-                    memcpy(unbuf.get(), scratch_buffer->data() + end_pos, nresidual);
+                    memcpy(unbuf->data(), scratch_buffer->data() + end_pos, nresidual);
                   }
                   return res;
                 }) &
