@@ -3781,8 +3781,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
     tbb::parallel_pipeline(
         max_threads,
-        tbb::make_filter < void,
-        std::pair<std::shared_ptr<std::vector<char>>>(
+        tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
             tbb::filter::serial_in_order,
             [&](tbb::flow_control& fc) {
               auto scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
@@ -3848,8 +3847,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   return res;
                 }) &
             tbb::make_filter<ImportDelimitedParams, void>(
-                tbb::filter::parallel,
-                [](ImportDelimitedParams params) {
+                tbb::filter::parallel, [](ImportDelimitedParams params) {
                   auto status =
                       import_thread_delimited(params.importer,
                                               params.scratch_buffer,
