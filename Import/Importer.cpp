@@ -3807,16 +3807,16 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                     end_pos = find_end(scratch_buffer->data(), size, copy_params);
                   }
 
-                  memcpy(unbuf.get() + nresidual, scratch_buffer->data(), end);
-
+                  memcpy(unbuf.get() + nresidual, scratch_buffer->data(), end_pos);
+                  unbuf.resize(nresidual + end_pos);
                   unsigned int num_rows_this_buffer = 0;
                   {
                     // we could multi-thread this, but not worth it
                     // additional cost here is ~1.4ms per chunk and
                     // probably free because this thread will spend
                     // most of its time waiting for the child threads
-                    char* p = scratch_buffer->data() + begin_pos;
-                    char* pend = scratch_buffer->data() + end_pos;
+                    char* p = unbuf;
+                    char* pend = unbuf + unbuf.size();
                     char d = copy_params.line_delim;
                     while (p < pend) {
                       if (*p++ == d) {
@@ -3827,17 +3827,15 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
                   res.importer = this;
                   res.scratch_buffer = unbuf;
-                  res.begin_pos = begin_pos;
-                  res.end_pos = end_pos;
-                  res.total_size = end_pos;
+                  res.begin_pos = 0;
+                  res.end_pos = unbuf.size();
+                  res.total_size = unbuf.size();
                   res.columnIdToRenderGroupAnalyzerMap =
                       &columnIdToRenderGroupAnalyzerMap;
                   res.first_row_index_this_buffer = first_row_index_this_buffer;
                   res.loader = loader.get();
 
                   first_row_index_this_buffer += num_rows_this_buffer;
-
-                  current_pos += end_pos;
 
                   nresidual = size - end_pos;
                   unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
