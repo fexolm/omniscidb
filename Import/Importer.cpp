@@ -3469,12 +3469,6 @@ void DataStreamSink::import_parquet(std::vector<std::string>& file_paths) {
 void DataStreamSink::import_compressed(std::vector<std::string>& file_paths) {
   ImportStatus ret;
   ret = importDelimited(file_path, true);
-  th_pipe_reader.join();
-
-  // rethrow any exception happened herebefore
-  if (teptr) {
-    std::rethrow_exception(teptr);
-  }
 }
 
 ImportStatus Importer::import() {
