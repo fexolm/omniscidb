@@ -3550,7 +3550,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     double total_2_copy = 0;
     double total_2_count_rows = 0;
     double total_2_last_part = 0;
-    double total_import = 0;
+    std::atomic<int> total_import = 0;
     tbb::parallel_pipeline(
         max_threads,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
@@ -3590,7 +3590,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                     unbuf->resize(nresidual + end_pos);
 
                     unsigned int num_rows_this_buffer = 0;
-                    total_2_count_rows += (double)measure<>::execution([&]() {
+                    total_2_count_rows += (int)measure<>::execution([&]() {
                       auto p = unbuf->data();
                       auto pend = unbuf->data() + unbuf->size();
                       char d = copy_params.line_delim;
@@ -3650,7 +3650,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
               << std::endl;
     std::cout << "Time in second filter(last): " << total_2_last_part / 1000 << " s"
               << std::endl;
-    std::cout << "Time in import delimited: " << total_import / 1000 / max_threads << " s"
+    std::cout << "Time in import delimited: " << (double)total_import.load() / 1000 / max_threads << " s"
               << std::endl;
   }
 
