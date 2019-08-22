@@ -2009,10 +2009,10 @@ static ImportStatus import_thread_delimited(
       });
       total_str_to_val_time_us += us;
     }
-    if (import_status.rows_completed > 0) {
-      load_ms = measure<>::execution(
-          [&]() { importer->load(import_buffers, import_status.rows_completed); });
-    }
+    // if (import_status.rows_completed > 0) {
+    //   load_ms = measure<>::execution(
+    //       [&]() { importer->load(import_buffers, import_status.rows_completed); });
+    // }
   });
   if (DEBUG_TIMING && import_status.rows_completed > 0) {
     LOG(INFO) << "Thread" << std::this_thread::get_id() << ":"
