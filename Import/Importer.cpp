@@ -3871,6 +3871,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   threads--;
                 }));
     working = false;
+    t.join();
   }
 
   // must set import_status.load_truncated before closing this end of pipe
