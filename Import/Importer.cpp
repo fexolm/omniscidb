@@ -23,6 +23,7 @@
 #include <gdal.h>
 #include <ogrsf_frmts.h>
 #include <unistd.h>
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <boost/dynamic_bitset.hpp>
 #include <boost/filesystem.hpp>
@@ -43,7 +44,6 @@
 #include <typeinfo>
 #include <unordered_map>
 #include <unordered_set>
-#include <algorithm>
 #include <utility>
 #include <vector>
 #include "../QueryEngine/TypePunning.h"
@@ -74,11 +74,11 @@
 #include "ArrowImporter.h"
 #include "Utils/StringConversions.h"
 
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_reduce.h>
 #include <tbb/pipeline.h>
 #include <unistd.h>
 #include <atomic>
-#include <tbb/parallel_reduce.h>
-#include <tbb/blocked_range.h>
 
 inline auto get_filesize(const std::string& file_path) {
   boost::filesystem::path boost_file_path{file_path};
@@ -3550,6 +3550,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     double total_2_copy = 0;
     double total_2_count_rows = 0;
     double total_2_last_part = 0;
+    double total_import = 0;
     tbb::parallel_pipeline(
         max_threads,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
@@ -3593,10 +3594,13 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                       auto p = unbuf->data();
                       auto pend = unbuf->data() + unbuf->size();
                       char d = copy_params.line_delim;
-                      num_rows_this_buffer = tbb::parallel_reduce(tbb::blocked_range<char *>(p, pend), 0, [&](tbb::blocked_range<char *> r, unsigned int partial_sum) {
-                        return std::count(r.begin(), r.end(), d) + partial_sum;
-                      },
-                      std::plus<unsigned int>());
+                      num_rows_this_buffer = tbb::parallel_reduce(
+                          tbb::blocked_range<char*>(p, pend),
+                          0,
+                          [&](tbb::blocked_range<char*> r, unsigned int partial_sum) {
+                            return std::count(r.begin(), r.end(), d) + partial_sum;
+                          },
+                          std::plus<unsigned int>());
                     });
 
                     res.importer = this;
@@ -3624,15 +3628,17 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                 }) &
             tbb::make_filter<ImportDelimitedParams, void>(
                 tbb::filter::parallel, [&](ImportDelimitedParams params) {
-                  auto status =
-                      import_thread_delimited(params.importer,
-                                              params.scratch_buffer,
-                                              params.begin_pos,
-                                              params.end_pos,
-                                              params.total_size,
-                                              params.columnIdToRenderGroupAnalyzerMap,
-                                              params.first_row_index_this_buffer,
-                                              params.loader);
+                  total_import += (double)measure<>::execution([&]() {
+                    auto status =
+                        import_thread_delimited(params.importer,
+                                                params.scratch_buffer,
+                                                params.begin_pos,
+                                                params.end_pos,
+                                                params.total_size,
+                                                params.columnIdToRenderGroupAnalyzerMap,
+                                                params.first_row_index_this_buffer,
+                                                params.loader);
+                  });
                 }));
     std::cout << "Time in first filter: " << total_first_filter / 1000 << " s"
               << std::endl;
@@ -3643,6 +3649,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     std::cout << "Time in second filter(count): " << total_2_count_rows / 1000 << " s"
               << std::endl;
     std::cout << "Time in second filter(last): " << total_2_last_part / 1000 << " s"
+              << std::endl;
+    std::cout << "Time in import delimited: " << total_import / 1000 / max_threads << " s"
               << std::endl;
   }
 
