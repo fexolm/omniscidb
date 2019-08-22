@@ -3544,6 +3544,9 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     double total_first_filter = 0;
     double total_second_filter = 0;
 
+    double total_2_copy = 0;
+    double total_2_count_rows = 0;
+    double total_2_last_part = 0;
     tbb::parallel_pipeline(
         max_threads,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
@@ -3554,9 +3557,9 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
               total_first_filter += (double)measure<>::execution([&]() {
                 scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
                 size = fread(reinterpret_cast<void*>(scratch_buffer->data()),
-                                    1,
-                                    alloc_size,
-                                    p_file);
+                             1,
+                             alloc_size,
+                             p_file);
                 scratch_buffer->resize(size);
               });
               if (size <= 0) {
@@ -3577,15 +3580,13 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                     } else {
                       end_pos = find_end(scratch_buffer->data(), size, copy_params);
                     }
-
-                    memcpy(unbuf->data() + nresidual, scratch_buffer->data(), end_pos);
+                    total_2_copy += (double)measure<>::execution([&]() {
+                      memcpy(unbuf->data() + nresidual, scratch_buffer->data(), end_pos);
+                    });
                     unbuf->resize(nresidual + end_pos);
+
                     unsigned int num_rows_this_buffer = 0;
-                    {
-                      // we could multi-thread this, but not worth it
-                      // additional cost here is ~1.4ms per chunk and
-                      // probably free because this thread will spend
-                      // most of its time waiting for the child threads
+                    total_2_count_rows += (double)measure<>::execution([&]() {
                       auto p = unbuf->begin();
                       auto pend = unbuf->end();
                       char d = copy_params.line_delim;
@@ -3594,7 +3595,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                           num_rows_this_buffer++;
                         }
                       }
-                    }
+                    });
 
                     res.importer = this;
                     res.scratch_buffer = unbuf;
@@ -3609,10 +3610,13 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                     first_row_index_this_buffer += num_rows_this_buffer;
 
                     nresidual = size - end_pos;
-                    unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
-                    if (nresidual > 0) {
-                      memcpy(unbuf->data(), scratch_buffer->data() + end_pos, nresidual);
-                    }
+                    total_2_last_part += (double)measure<>::execution([&]() {
+                      unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
+                      if (nresidual > 0) {
+                        memcpy(
+                            unbuf->data(), scratch_buffer->data() + end_pos, nresidual);
+                      }
+                    });
                   });
                   return res;
                 }) &
@@ -3631,6 +3635,12 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     std::cout << "Time in first filter: " << total_first_filter / 1000 << " s"
               << std::endl;
     std::cout << "Time in second filter: " << total_second_filter / 1000 << " s"
+              << std::endl;
+    std::cout << "Time in second filter(copy): " << total_2_copy / 1000 << " s"
+              << std::endl;
+    std::cout << "Time in second filter(count): " << total_2_count_rows / 1000 << " s"
+              << std::endl;
+    std::cout << "Time in second filter(last): " << total_2_last_part / 1000 << " s"
               << std::endl;
   }
 
