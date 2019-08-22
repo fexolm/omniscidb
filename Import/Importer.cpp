@@ -74,9 +74,8 @@
 #include "Utils/StringConversions.h"
 
 #include <tbb/pipeline.h>
-#include <atomic>
 #include <unistd.h>
-
+#include <atomic>
 
 inline auto get_filesize(const std::string& file_path) {
   boost::filesystem::path boost_file_path{file_path};
@@ -3785,8 +3784,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     std::atomic<int> threads = 0;
     bool working = true;
 
-    std::thread t([&](){
-      while(working) {
+    std::thread t([&]() {
+      while (working) {
         std::cout << "Using " << threads.load() << " threads" << std::endl;
         usleep(1000);
       }
@@ -3858,7 +3857,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   return res;
                 }) &
             tbb::make_filter<ImportDelimitedParams, void>(
-                threads++; tbb::filter::parallel, [](ImportDelimitedParams params) {
+                tbb::filter::parallel, [&](ImportDelimitedParams params) {
+                  threads++;
                   auto status =
                       import_thread_delimited(params.importer,
                                               params.scratch_buffer,
