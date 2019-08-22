@@ -3784,12 +3784,12 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     std::atomic<int> threads = 0;
     bool working = true;
 
-    // std::thread t([&]() {
-    //   while (working) {
-    //     std::cout << "Using " << threads.load() << " threads" << std::endl;
-    //     usleep(1000);
-    //   }
-    // });
+    std::thread t([&]() {
+      while (working) {
+        std::cout << "Using " << threads.load(std::memory_order_relaxed) << " threads" << std::endl;
+        usleep(1000);
+      }
+    });
 
     tbb::parallel_pipeline(
         max_threads,
