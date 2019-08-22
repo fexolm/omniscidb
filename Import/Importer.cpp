@@ -3589,14 +3589,13 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
                     unsigned int num_rows_this_buffer = 0;
                     total_2_count_rows += (double)measure<>::execution([&]() {
-
                       auto p = unbuf->data();
                       auto pend = unbuf->data() + unbuf->size();
                       char d = copy_params.line_delim;
                       tbb::parallel_reduce(tbb::blocked_range<char *>(p, pend), 0, [&](tbb::blocked_range<char *> r, unsigned int partial_sum) {
                         return std::count(r.begin(), r.end(), d) + partial_sum;
                       },
-                      std::sum<unsigned int>());
+                      std::plus<unsigned int>());
                     });
 
                     res.importer = this;
