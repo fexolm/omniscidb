@@ -78,6 +78,7 @@
 #include <unistd.h>
 #include <atomic>
 #include <tbb/parallel_reduce.h>
+#include <tbb/blocked_range.h>
 
 inline auto get_filesize(const std::string& file_path) {
   boost::filesystem::path boost_file_path{file_path};
@@ -3592,7 +3593,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                       auto p = unbuf->data();
                       auto pend = unbuf->data() + unbuf->size();
                       char d = copy_params.line_delim;
-                      tbb::parallel_reduce(tbb::blocked_range<char *>(p, pend), 0, [&](tbb::blocked_range<char *> r, unsigned int partial_sum) {
+                      num_rows_this_buffer = tbb::parallel_reduce(tbb::blocked_range<char *>(p, pend), 0, [&](tbb::blocked_range<char *> r, unsigned int partial_sum) {
                         return std::count(r.begin(), r.end(), d) + partial_sum;
                       },
                       std::plus<unsigned int>());
