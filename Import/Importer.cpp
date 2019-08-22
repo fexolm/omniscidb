@@ -3618,17 +3618,17 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                 }) &
             tbb::make_filter<ImportDelimitedParams, void>(
                 tbb::filter::parallel, [&](ImportDelimitedParams params) {
-                  threads++;
-                  auto status =
-                      import_thread_delimited(params.importer,
-                                              params.scratch_buffer,
-                                              params.begin_pos,
-                                              params.end_pos,
-                                              params.total_size,
-                                              params.columnIdToRenderGroupAnalyzerMap,
-                                              params.first_row_index_this_buffer,
-                                              params.loader);
-                  threads--;
+                  // threads++;
+                  // auto status =
+                  //     import_thread_delimited(params.importer,
+                  //                             params.scratch_buffer,
+                  //                             params.begin_pos,
+                  //                             params.end_pos,
+                  //                             params.total_size,
+                  //                             params.columnIdToRenderGroupAnalyzerMap,
+                  //                             params.first_row_index_this_buffer,
+                  //                             params.loader);
+                  // threads--;
                 }));
     working = false;
     // t.join();
