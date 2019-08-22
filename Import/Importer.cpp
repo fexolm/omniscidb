@@ -3870,9 +3870,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                               params.loader);
                   threads--;
                 }));
+    working = false;
   }
-
-  working = false;
 
   // must set import_status.load_truncated before closing this end of pipe
   // otherwise, the thread on the other end would throw an unwanted 'write()'
