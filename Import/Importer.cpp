@@ -2013,10 +2013,10 @@ static ImportStatus import_thread_delimited(
       });
       total_str_to_val_time_us += us;
     }
-    // if (import_status.rows_completed > 0) {
-    //   load_ms = measure<>::execution(
-    //       [&]() { importer->load(import_buffers, import_status.rows_completed); });
-    // }
+    if (import_status.rows_completed > 0) {
+      load_ms = measure<>::execution(
+          [&]() { importer->load(import_buffers, import_status.rows_completed); });
+    }
   });
   if (DEBUG_TIMING && import_status.rows_completed > 0) {
     LOG(INFO) << "Thread" << std::this_thread::get_id() << ":"
@@ -2622,18 +2622,19 @@ bool Loader::loadToShard(
   // we can have multiple threads sort/shuffle InsertData
   loader_lock.unlock();
 
-  {
-    try {
-      if (checkpoint) {
-        shard_table->fragmenter->insertData(ins_data);
-      } else {
-        shard_table->fragmenter->insertDataNoCheckpoint(ins_data);
-      }
-    } catch (std::exception& e) {
-      LOG(ERROR) << "Fragmenter Insert Exception: " << e.what();
-      success = false;
-    }
-  }
+std::cout << "checkpoint" << std::endl;
+  // {
+  //   try {
+  //     if (checkpoint) {
+  //       shard_table->fragmenter->insertData(ins_data);
+  //     } else {
+  //       shard_table->fragmenter->insertDataNoCheckpoint(ins_data);
+  //     }
+  //   } catch (std::exception& e) {
+  //     LOG(ERROR) << "Fragmenter Insert Exception: " << e.what();
+  //     success = false;
+  //   }
+  // }
   return success;
 }
 
