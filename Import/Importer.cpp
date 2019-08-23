@@ -2622,7 +2622,7 @@ bool Loader::loadToShard(
   // we can have multiple threads sort/shuffle InsertData
   loader_lock.unlock();
 
-std::cout << "checkpoint" << std::endl;
+std::cout << checkpoint << std::endl;
   // {
   //   try {
   //     if (checkpoint) {
