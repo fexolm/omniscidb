@@ -2618,21 +2618,21 @@ bool Loader::loadToShard(
     ins_data.bypass.push_back(0 == import_buffer->get_replicate_count());
   }
 
-  // // release loader_lock so that in InsertOrderFragmenter::insertDat
-  // // we can have multiple threads sort/shuffle InsertData
-  // loader_lock.unlock();
-  // {
-  //   try {
-  //     if (checkpoint) {
-  //       shard_table->fragmenter->insertData(ins_data);
-  //     } else {
-  //       shard_table->fragmenter->insertDataNoCheckpoint(ins_data);
-  //     }
-  //   } catch (std::exception& e) {
-  //     LOG(ERROR) << "Fragmenter Insert Exception: " << e.what();
-  //     success = false;
-  //   }
-  // }
+  // release loader_lock so that in InsertOrderFragmenter::insertDat
+  // we can have multiple threads sort/shuffle InsertData
+  loader_lock.unlock();
+  {
+    try {
+      if (checkpoint) {
+        shard_table->fragmenter->insertData(ins_data);
+      } else {
+        shard_table->fragmenter->insertDataNoCheckpoint(ins_data);
+      }
+    } catch (std::exception& e) {
+      LOG(ERROR) << "Fragmenter Insert Exception: " << e.what();
+      success = false;
+    }
+  }
   return true;
 }
 
