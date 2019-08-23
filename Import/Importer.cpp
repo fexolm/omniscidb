@@ -2596,7 +2596,7 @@ bool Loader::loadToShard(
     size_t row_count,
     const TableDescriptor* shard_table,
     bool checkpoint) {
-  auto data = get_data_block_pointers(import_buffers);
+  //auto data = get_data_block_pointers(import_buffers);
 
   // std::unique_lock<std::mutex> loader_lock(loader_mutex_);
   // // patch insert_data with new column
