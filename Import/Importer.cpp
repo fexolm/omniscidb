@@ -2621,8 +2621,6 @@ bool Loader::loadToShard(
   // release loader_lock so that in InsertOrderFragmenter::insertDat
   // we can have multiple threads sort/shuffle InsertData
   loader_lock.unlock();
-
-std::cout << checkpoint << std::endl;
   // {
   //   try {
   //     if (checkpoint) {
