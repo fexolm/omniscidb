@@ -2009,10 +2009,10 @@ static ImportStatus import_thread_delimited(
       });
       total_str_to_val_time_us += us;
     }
-    // if (import_status.rows_completed > 0) {
-    //   load_ms = measure<>::execution(
-    //       [&]() { importer->load(import_buffers, import_status.rows_completed); });
-    // }
+    if (import_status.rows_completed > 0) {
+      load_ms = measure<>::execution(
+          [&]() { importer->load(import_buffers, import_status.rows_completed); });
+    }
   });
   if (DEBUG_TIMING && import_status.rows_completed > 0) {
     LOG(INFO) << "Thread" << std::this_thread::get_id() << ":"
@@ -2506,6 +2506,7 @@ bool Loader::loadImpl(
     const std::vector<std::unique_ptr<TypedImportBuffer>>& import_buffers,
     size_t row_count,
     bool checkpoint) {
+  std::cout << table_desc_->nShards << std::endl;
   if (table_desc_->nShards) {
     std::vector<OneShardBuffers> all_shard_import_buffers;
     std::vector<size_t> all_shard_row_counts;
@@ -3473,7 +3474,7 @@ ImportStatus Importer::import() {
 
 ImportStatus Importer::importDelimited(const std::string& file_path,
                                        const bool decompressed) {
-  auto checkout_time = measure<>::execution([&](){});                    
+  auto checkout_time = measure<>::execution([&]() {});
   auto full_time = measure<>::execution([&]() {
     bool load_truncated = false;
     set_import_status(import_id, import_status);
@@ -3687,7 +3688,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
       }
     }
 
-    checkout_time = measure<>::execution([&](){checkpoint(start_epoch);});
+    checkout_time = measure<>::execution([&]() { checkpoint(start_epoch); });
 
     // must set import_status.load_truncated before closing this end of pipe
     // otherwise, the thread on the other end would throw an unwanted 'write()'
@@ -3698,7 +3699,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     fclose(p_file);
     p_file = nullptr;
   });
-  std::cout << "Execution time: " << (double)(full_time - checkout_time) / 1000 << "sec" << std::endl;
+  std::cout << "Execution time: " << (double)(full_time - checkout_time) / 1000 << "sec"
+            << std::endl;
   std::cout << "Checkout time: " << (double)(checkout_time) / 1000 << "sec" << std::endl;
   return import_status;
 }
