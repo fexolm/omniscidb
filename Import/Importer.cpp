@@ -2603,6 +2603,8 @@ bool Loader::loadToShard(
     size_t row_count,
     const TableDescriptor* shard_table,
     bool checkpoint) {
+  auto data = get_data_block_pointers(import_buffers);
+
   std::unique_lock<std::mutex> loader_lock(loader_mutex_);
   // patch insert_data with new column
   if (this->getReplicating()) {
@@ -2617,7 +2619,7 @@ bool Loader::loadToShard(
   ins_data.numRows = row_count;
   bool success = true;
 
-  ins_data.data = get_data_block_pointers(import_buffers);
+  ins_data.data = data;
 
   for (const auto& import_buffer : import_buffers) {
     ins_data.bypass.push_back(0 == import_buffer->get_replicate_count());
