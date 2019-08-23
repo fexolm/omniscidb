@@ -2019,10 +2019,10 @@ static ImportStatus import_thread_delimited(
       });
       total_str_to_val_time_us += us;
     }
-    // if (import_status.rows_completed > 0) {
-    //   load_ms = measure<>::execution(
-    //       [&]() { importer->load(import_buffers, import_status.rows_completed); });
-    // }
+    if (import_status.rows_completed > 0) {
+      load_ms = measure<>::execution(
+          [&]() { importer->load(import_buffers, import_status.rows_completed); });
+    }
   });
   if (DEBUG_TIMING && import_status.rows_completed > 0) {
     LOG(INFO) << "Thread" << std::this_thread::get_id() << ":"
@@ -2512,6 +2512,7 @@ bool Loader::loadImpl(
     const std::vector<std::unique_ptr<TypedImportBuffer>>& import_buffers,
     size_t row_count,
     bool checkpoint) {
+  std::cout << table_desc_->nShards << std::endl;
   if (table_desc_->nShards) {
     std::vector<OneShardBuffers> all_shard_import_buffers;
     std::vector<size_t> all_shard_row_counts;
@@ -2631,7 +2632,6 @@ bool Loader::loadToShard(
       if (checkpoint) {
         shard_table->fragmenter->insertData(ins_data);
       } else {
-
         shard_table->fragmenter->insertDataNoCheckpoint(ins_data);
       }
     } catch (std::exception& e) {
@@ -3651,8 +3651,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
               << std::endl;
     std::cout << "Time in second filter(last): " << total_2_last_part / 1000 << " s"
               << std::endl;
-    std::cout << "Time in import delimited: " << (double)total_import.load() / 1000 / max_threads << " s"
-              << std::endl;
+    std::cout << "Time in import delimited: "
+              << (double)total_import.load() / 1000 / max_threads << " s" << std::endl;
   }
 
   // must set import_status.load_truncated before closing this end of pipe
