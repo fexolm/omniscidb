@@ -2541,7 +2541,7 @@ std::vector<DataBlockPtr> Loader::get_data_block_pointers(
         import_buffers[buf_idx]->getTypeInfo().get_compression() != kENCODING_NONE) {
       auto string_payload_ptr = import_buffers[buf_idx]->getStringBuffer();
       CHECK_EQ(kENCODING_DICT, import_buffers[buf_idx]->getTypeInfo().get_compression());
-
+      std::cout << "async" << std::endl;
       encoded_data_block_ptrs_futures.emplace_back(std::make_pair(
           buf_idx,
           std::async(std::launch::async, [buf_idx, &import_buffers, string_payload_ptr] {
@@ -2596,7 +2596,7 @@ bool Loader::loadToShard(
     size_t row_count,
     const TableDescriptor* shard_table,
     bool checkpoint) {
-  //auto data = get_data_block_pointers(import_buffers);
+  auto data = get_data_block_pointers(import_buffers);
 
   // std::unique_lock<std::mutex> loader_lock(loader_mutex_);
   // // patch insert_data with new column
