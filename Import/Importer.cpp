@@ -2598,25 +2598,25 @@ bool Loader::loadToShard(
     bool checkpoint) {
   auto data = get_data_block_pointers(import_buffers);
 
-  // std::unique_lock<std::mutex> loader_lock(loader_mutex_);
-  // // patch insert_data with new column
-  // if (this->getReplicating()) {
-  //   for (const auto& import_buff : import_buffers) {
-  //     insert_data_.replicate_count = import_buff->get_replicate_count();
-  //     insert_data_.columnDescriptors[import_buff->getColumnDesc()->columnId] =
-  //         import_buff->getColumnDesc();
-  //   }
-  // }
+  std::unique_lock<std::mutex> loader_lock(loader_mutex_);
+  // patch insert_data with new column
+  if (this->getReplicating()) {
+    for (const auto& import_buff : import_buffers) {
+      insert_data_.replicate_count = import_buff->get_replicate_count();
+      insert_data_.columnDescriptors[import_buff->getColumnDesc()->columnId] =
+          import_buff->getColumnDesc();
+    }
+  }
 
-  // Fragmenter_Namespace::InsertData ins_data(insert_data_);
-  // ins_data.numRows = row_count;
-  // bool success = true;
+  Fragmenter_Namespace::InsertData ins_data(insert_data_);
+  ins_data.numRows = row_count;
+  bool success = true;
 
-  // ins_data.data = data;
+  ins_data.data = data;
 
-  // for (const auto& import_buffer : import_buffers) {
-  //   ins_data.bypass.push_back(0 == import_buffer->get_replicate_count());
-  // }
+  for (const auto& import_buffer : import_buffers) {
+    ins_data.bypass.push_back(0 == import_buffer->get_replicate_count());
+  }
 
   // // release loader_lock so that in InsertOrderFragmenter::insertDat
   // // we can have multiple threads sort/shuffle InsertData
