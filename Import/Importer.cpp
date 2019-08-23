@@ -3481,7 +3481,6 @@ struct ImportDelimitedParams {
   size_t end_pos;
   size_t total_size;
   const ColumnIdToRenderGroupAnalyzerMapType* columnIdToRenderGroupAnalyzerMap;
-  size_t first_row_index_this_buffer;
   Loader* loader;
 };
 
@@ -3535,8 +3534,6 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
   auto start_epoch = loader->getTableEpoch();
   {
-    size_t first_row_index_this_buffer = 0;
-
     int nresidual = 0;
     auto unbuf = std::make_shared<std::vector<char>>(alloc_size);
 
@@ -3597,7 +3594,6 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                               params.end_pos,
                                               params.total_size,
                                               params.columnIdToRenderGroupAnalyzerMap,
-                                              params.first_row_index_this_buffer,
                                               params.loader);
                 }));
   }
