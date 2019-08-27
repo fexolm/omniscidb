@@ -30,6 +30,12 @@
 #include "Shared/Logger.h"
 
 #include <LockMgr/TableLockMgr.h>
+#include <ittnotify.h>
+
+__itt_domain* domain = __itt_domain_create("MyTraces.MyDomain");
+__itt_string_handle* shMyTask = __itt_string_handle_create("My Task");
+__itt_string_handle* shMySubtask = __itt_string_handle_create("My SubTask");
+
 
 #define DROP_FRAGMENT_FACTOR \
   0.97  // drop to 97% of max so we don't keep adding and dropping fragments
@@ -324,6 +330,7 @@ void InsertOrderFragmenter::insertData(InsertData& insertDataStruct) {
 
     if (defaultInsertLevel_ ==
         Data_Namespace::DISK_LEVEL) {  // only checkpoint if data is resident on disk
+        std::cout << "checkpoint" << std::endl;
       dataMgr_->checkpoint(
           chunkKeyPrefix_[0],
           chunkKeyPrefix_[1]);  // need to checkpoint here to remove window for corruption
@@ -342,11 +349,14 @@ void InsertOrderFragmenter::insertData(InsertData& insertDataStruct) {
 }
 
 void InsertOrderFragmenter::insertDataNoCheckpoint(InsertData& insertDataStruct) {
+  __itt_task_begin(domain, __itt_null, __itt_null, shMyTask);
+
   // TODO: this local lock will need to be centralized when ALTER COLUMN is added, bc
   mapd_unique_lock<mapd_shared_mutex> insertLock(
       insertMutex_);  // prevent two threads from trying to insert into the same table
                       // simultaneously
   insertDataImpl(insertDataStruct);
+  __itt_task_end(domain);
 }
 
 void InsertOrderFragmenter::replicateData(const InsertData& insertDataStruct) {
@@ -431,6 +441,8 @@ void InsertOrderFragmenter::insertDataImpl(InsertData& insertDataStruct) {
   // populate deleted system column if it should exists, as it will not come from client
   // Do not add this magical column in the replicate ALTER TABLE ADD route as
   // it is not needed and will cause issues
+  __itt_task_begin(domain, __itt_null, __itt_null, shMySubtask);
+
   std::unique_ptr<int8_t[]> data_for_deleted_column;
   for (const auto& cit : columnMap_) {
     if (cit.second.get_column_desc()->isDeletedCol &&
@@ -468,9 +480,8 @@ void InsertOrderFragmenter::insertDataImpl(InsertData& insertDataStruct) {
 
   size_t numRowsLeft = insertDataStruct.numRows;
   size_t numRowsInserted = 0;
-  vector<DataBlockPtr> dataCopy =
-      insertDataStruct.data;  // bc append data will move ptr forward and this violates
-                              // constness of InsertData
+  auto dataCopy(std::move(insertDataStruct.data));  // bc append data will move ptr forward and this violates
+                                                    // constness of InsertData
   if (numRowsLeft <= 0) {
     return;
   }
@@ -583,6 +594,8 @@ void InsertOrderFragmenter::insertDataImpl(InsertData& insertDataStruct) {
   }
   numTuples_ += insertDataStruct.numRows;
   dropFragmentsToSize(maxRows_);
+
+  __itt_task_end(domain);
 }
 
 FragmentInfo* InsertOrderFragmenter::createNewFragment(
