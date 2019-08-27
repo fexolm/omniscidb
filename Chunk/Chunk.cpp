@@ -134,7 +134,7 @@ void Chunk::createChunkBuffer(DataMgr* data_mgr,
   } else {
     buffer = data_mgr->createChunkBuffer(key, mem_level, device_id, page_size);
   }
-  __itt_end_task(domain);
+  __itt_task_end(domain);
 }
 
 size_t Chunk::getNumElemsForBytesInsertData(const DataBlockPtr& src_data,
@@ -180,7 +180,7 @@ size_t Chunk::getNumElemsForBytesInsertData(const DataBlockPtr& src_data,
       CHECK(false);
       return 0;
   }
-  __itt_end_task(domain);
+  __itt_task_end(domain);
 }
 
 ChunkMetadata Chunk::appendData(DataBlockPtr& src_data,
@@ -226,7 +226,7 @@ ChunkMetadata Chunk::appendData(DataBlockPtr& src_data,
         CHECK(false);
     }
   }
-  __itt_end_task(domain);
+  __itt_task_end(domain);
   return buffer->encoder->appendData(src_data.numbersPtr, num_elems, ti, replicating);
 }
 
