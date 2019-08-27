@@ -187,7 +187,7 @@ ChunkMetadata Chunk::appendData(DataBlockPtr& src_data,
                                 const size_t num_elems,
                                 const size_t start_idx,
                                 const bool replicating) {
-  __itt_task_begin(domain, __itt_null, __itt_null, appendData);
+  __itt_task_begin(domain, __itt_null, __itt_null, appendDataTask);
 
   const auto& ti = column_desc->columnType;
   if (ti.is_varlen()) {
