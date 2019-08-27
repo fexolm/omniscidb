@@ -25,14 +25,14 @@
 #include "../DataMgr/FixedLengthArrayNoneEncoder.h"
 #include "../DataMgr/StringNoneEncoder.h"
 
-__itt_domain* domain = __itt_domain_create("Traces.Chunk");
-__itt_string_handle* getChunkBufferTask =
+static __itt_domain* domain = __itt_domain_create("Traces.Chunk");
+static __itt_string_handle* getChunkBufferTask =
     __itt_string_handle_create("Traces.Chunk.getChunkBuffer");
-__itt_string_handle* createChunkBufferTask =
+static __itt_string_handle* createChunkBufferTask =
     __itt_string_handle_create("Traces.Chunk.createChunkBuffer");
-__itt_string_handle* getNumElemsForBytesInsertDataTask =
+static __itt_string_handle* getNumElemsForBytesInsertDataTask =
     __itt_string_handle_create("Traces.Chunk.getNumElemsForBytesInsertData");
-__itt_string_handle* appendDataTask =
+static __itt_string_handle* appendDataTask =
     __itt_string_handle_create("Traces.Chunk.appendData");
 
 namespace Chunk_NS {

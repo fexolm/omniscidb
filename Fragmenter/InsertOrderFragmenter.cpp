@@ -32,9 +32,9 @@
 #include <LockMgr/TableLockMgr.h>
 #include <ittnotify.h>
 
-__itt_domain* domain = __itt_domain_create("Traces.InsertOrderFragmenter");
-__itt_string_handle* insertDataNoCheckpointTask = __itt_string_handle_create("Traces.InsertOrderFragmenter.insertDataNoCheckpoint");
-__itt_string_handle* insertDataImplTask = __itt_string_handle_create("Traces.InsertOrderFragmenter.insertDataImpl");
+static __itt_domain* domain = __itt_domain_create("Traces.InsertOrderFragmenter");
+static __itt_string_handle* insertDataNoCheckpointTask = __itt_string_handle_create("Traces.InsertOrderFragmenter.insertDataNoCheckpoint");
+static __itt_string_handle* insertDataImplTask = __itt_string_handle_create("Traces.InsertOrderFragmenter.insertDataImpl");
 
 
 #define DROP_FRAGMENT_FACTOR \
