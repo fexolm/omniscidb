@@ -1,4 +1,5 @@
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-result")
-
+include_directories("$ENV{VTUNE_AMPLIFIER_2019_DIR}/include")
+link_directories("$ENV{VTUNE_AMPLIFIER_2019_DIR}/lib64")
 add_library(Chunk Chunk.cpp)
-target_link_libraries(Chunk DataMgr)
+target_link_libraries(Chunk DataMgr "$ENV{VTUNE_AMPLIFIER_2019_DIR}/lib64/libittnotify.a")
