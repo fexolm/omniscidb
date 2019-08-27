@@ -32,9 +32,9 @@
 #include <LockMgr/TableLockMgr.h>
 #include <ittnotify.h>
 
-__itt_domain* domain = __itt_domain_create("MyTraces.MyDomain");
-__itt_string_handle* shMyTask = __itt_string_handle_create("My Task");
-__itt_string_handle* shMySubtask = __itt_string_handle_create("My SubTask");
+__itt_domain* domain = __itt_domain_create("Traces.InsertOrderFragmenter");
+__itt_string_handle* insertDataNoCheckpointTask = __itt_string_handle_create("Traces.InsertOrderFragmenter.insertDataNoCheckpoint");
+__itt_string_handle* insertDataImplTask = __itt_string_handle_create("Traces.InsertOrderFragmenter.insertDataImpl");
 
 
 #define DROP_FRAGMENT_FACTOR \
@@ -330,7 +330,6 @@ void InsertOrderFragmenter::insertData(InsertData& insertDataStruct) {
 
     if (defaultInsertLevel_ ==
         Data_Namespace::DISK_LEVEL) {  // only checkpoint if data is resident on disk
-        std::cout << "checkpoint" << std::endl;
       dataMgr_->checkpoint(
           chunkKeyPrefix_[0],
           chunkKeyPrefix_[1]);  // need to checkpoint here to remove window for corruption
@@ -349,7 +348,7 @@ void InsertOrderFragmenter::insertData(InsertData& insertDataStruct) {
 }
 
 void InsertOrderFragmenter::insertDataNoCheckpoint(InsertData& insertDataStruct) {
-  __itt_task_begin(domain, __itt_null, __itt_null, shMyTask);
+  __itt_task_begin(domain, __itt_null, __itt_null, insertDataNoCheckpointTask);
 
   // TODO: this local lock will need to be centralized when ALTER COLUMN is added, bc
   mapd_unique_lock<mapd_shared_mutex> insertLock(
@@ -441,7 +440,7 @@ void InsertOrderFragmenter::insertDataImpl(InsertData& insertDataStruct) {
   // populate deleted system column if it should exists, as it will not come from client
   // Do not add this magical column in the replicate ALTER TABLE ADD route as
   // it is not needed and will cause issues
-  __itt_task_begin(domain, __itt_null, __itt_null, shMySubtask);
+  __itt_task_begin(domain, __itt_null, __itt_null, insertDataImplTask);
 
   std::unique_ptr<int8_t[]> data_for_deleted_column;
   for (const auto& cit : columnMap_) {

@@ -20,9 +20,20 @@
  */
 
 #include "Chunk.h"
+#include <ittnotify.h>
 #include "../DataMgr/ArrayNoneEncoder.h"
 #include "../DataMgr/FixedLengthArrayNoneEncoder.h"
 #include "../DataMgr/StringNoneEncoder.h"
+
+__itt_domain* domain = __itt_domain_create("Traces.Chunk");
+__itt_string_handle* getChunkBufferTask =
+    __itt_string_handle_create("Traces.Chunk.getChunkBuffer");
+__itt_string_handle* createChunkBufferTask =
+    __itt_string_handle_create("Traces.Chunk.createChunkBuffer");
+__itt_string_handle* getNumElemsForBytesInsertDataTask =
+    __itt_string_handle_create("Traces.Chunk.getNumElemsForBytesInsertData");
+__itt_string_handle* appendDataTask =
+    __itt_string_handle_create("Traces.Chunk.appendData");
 
 namespace Chunk_NS {
 std::shared_ptr<Chunk> Chunk::getChunk(const ColumnDescriptor* cd,
@@ -60,6 +71,7 @@ void Chunk::getChunkBuffer(DataMgr* data_mgr,
                            const int device_id,
                            const size_t num_bytes,
                            const size_t num_elems) {
+  __itt_task_begin(domain, __itt_null, __itt_null, getChunkBufferTask);
   if (column_desc->columnType.is_varlen() && !column_desc->columnType.is_fixlen_array()) {
     ChunkKey subKey = key;
     subKey.push_back(1);  // 1 for the main buffer
@@ -103,6 +115,7 @@ void Chunk::getChunkBuffer(DataMgr* data_mgr,
   } else {
     buffer = data_mgr->getChunkBuffer(key, mem_level, device_id, num_bytes);
   }
+  __itt_task_end(domain);
 }
 
 void Chunk::createChunkBuffer(DataMgr* data_mgr,
@@ -110,6 +123,7 @@ void Chunk::createChunkBuffer(DataMgr* data_mgr,
                               const MemoryLevel mem_level,
                               const int device_id,
                               const size_t page_size) {
+  __itt_task_begin(domain, __itt_null, __itt_null, createChunkBufferTask);
   if (column_desc->columnType.is_varlen() && !column_desc->columnType.is_fixlen_array()) {
     ChunkKey subKey = key;
     subKey.push_back(1);  // 1 for the main buffer
@@ -120,6 +134,7 @@ void Chunk::createChunkBuffer(DataMgr* data_mgr,
   } else {
     buffer = data_mgr->createChunkBuffer(key, mem_level, device_id, page_size);
   }
+  __itt_end_task(domain);
 }
 
 size_t Chunk::getNumElemsForBytesInsertData(const DataBlockPtr& src_data,
@@ -127,6 +142,8 @@ size_t Chunk::getNumElemsForBytesInsertData(const DataBlockPtr& src_data,
                                             const size_t start_idx,
                                             const size_t byte_limit,
                                             const bool replicating) {
+  __itt_task_begin(domain, __itt_null, __itt_null, getNumElemsForBytesInsertDataTask);
+
   CHECK(column_desc->columnType.is_varlen());
   switch (column_desc->columnType.get_type()) {
     case kARRAY: {
@@ -163,12 +180,15 @@ size_t Chunk::getNumElemsForBytesInsertData(const DataBlockPtr& src_data,
       CHECK(false);
       return 0;
   }
+  __itt_end_task(domain);
 }
 
 ChunkMetadata Chunk::appendData(DataBlockPtr& src_data,
                                 const size_t num_elems,
                                 const size_t start_idx,
                                 const bool replicating) {
+  __itt_task_begin(domain, __itt_null, __itt_null, appendData);
+
   const auto& ti = column_desc->columnType;
   if (ti.is_varlen()) {
     switch (ti.get_type()) {
@@ -206,6 +226,7 @@ ChunkMetadata Chunk::appendData(DataBlockPtr& src_data,
         CHECK(false);
     }
   }
+  __itt_end_task(domain);
   return buffer->encoder->appendData(src_data.numbersPtr, num_elems, ti, replicating);
 }
 
