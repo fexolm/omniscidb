@@ -3562,7 +3562,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
               }
               unbuf->resize(scratch_buffer->size() - end_pos);
               std::copy(scratch_buffer->begin() + end_pos,
-                        scratch_buffer->end()),
+                        scratch_buffer->end(),
                         unbuf->begin());
               scratch_buffer->resize(end_pos);
               return scratch_buffer;
