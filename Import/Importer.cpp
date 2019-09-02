@@ -3579,7 +3579,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   nresidual = size - end_pos;
                   unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
                   if (nresidual > 0) {
-                    std::copy(scratch_buffer->begin() + end_pos, scratch_buffer->begin() + nresidual, unbuf->begin());
+                    std::copy(scratch_buffer->begin() + end_pos, scratch_buffer->begin() + end_pos + nresidual, unbuf->begin());
                   }
                   return res;
                 }) &
