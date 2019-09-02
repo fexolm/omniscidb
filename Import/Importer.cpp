@@ -2631,7 +2631,6 @@ bool Loader::loadToShard(
       if (checkpoint) {
         shard_table->fragmenter->insertData(ins_data);
       } else {
-
         shard_table->fragmenter->insertDataNoCheckpoint(ins_data);
       }
     } catch (std::exception& e) {
@@ -3545,12 +3544,6 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
     int nresidual = 0;
     auto unbuf = std::make_shared<std::vector<char>>(alloc_size);
 
-    double total_first_filter = 0;
-    double total_second_filter = 0;
-
-    double total_2_copy = 0;
-    double total_2_count_rows = 0;
-    double total_2_last_part = 0;
     std::atomic<int> total_import = 0;
     tbb::parallel_pipeline(
         max_threads,
@@ -3559,14 +3552,10 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
             [&](tbb::flow_control& fc) {
               std::shared_ptr<std::vector<char>> scratch_buffer;
               size_t size;
-              total_first_filter += (double)measure<>::execution([&]() {
-                scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
-                size = fread(reinterpret_cast<void*>(scratch_buffer->data()),
-                             1,
-                             alloc_size,
-                             p_file);
-                scratch_buffer->resize(size);
-              });
+              scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
+              size = fread(
+                  reinterpret_cast<void*>(scratch_buffer->data()), 1, alloc_size, p_file);
+              scratch_buffer->resize(size);
               if (size <= 0) {
                 fc.stop();
                 return std::make_shared<std::vector<char>>();
@@ -3577,82 +3566,59 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                 tbb::filter::serial_in_order,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
                   ImportDelimitedParams res;
-                  total_second_filter += (double)measure<>::execution([&]() {
-                    int end_pos;
-                    auto size = scratch_buffer->size();
-                    if (size < copy_params.buffer_size) {
-                      end_pos = size;
-                    } else {
-                      end_pos = find_end(scratch_buffer->data(), size, copy_params);
-                    }
-                    total_2_copy += (double)measure<>::execution([&]() {
-                      memcpy(unbuf->data() + nresidual, scratch_buffer->data(), end_pos);
-                    });
-                    unbuf->resize(nresidual + end_pos);
+                  int end_pos;
+                  auto size = scratch_buffer->size();
+                  if (size < copy_params.buffer_size) {
+                    end_pos = size;
+                  } else {
+                    end_pos = find_end(scratch_buffer->data(), size, copy_params);
+                  }
+                  memcpy(unbuf->data() + nresidual, scratch_buffer->data(), end_pos);
+                  unbuf->resize(nresidual + end_pos);
 
-                    unsigned int num_rows_this_buffer = 0;
-                    total_2_count_rows += (int)measure<>::execution([&]() {
-                      auto p = unbuf->data();
-                      auto pend = unbuf->data() + unbuf->size();
-                      char d = copy_params.line_delim;
-                      num_rows_this_buffer = tbb::parallel_reduce(
-                          tbb::blocked_range<char*>(p, pend),
-                          0,
-                          [&](tbb::blocked_range<char*> r, unsigned int partial_sum) {
-                            return std::count(r.begin(), r.end(), d) + partial_sum;
-                          },
-                          std::plus<unsigned int>());
-                    });
+                  unsigned int num_rows_this_buffer = 0;
+                  auto p = unbuf->data();
+                  auto pend = unbuf->data() + unbuf->size();
+                  char d = copy_params.line_delim;
+                  num_rows_this_buffer = tbb::parallel_reduce(
+                      tbb::blocked_range<char*>(p, pend),
+                      0,
+                      [&](tbb::blocked_range<char*> r, unsigned int partial_sum) {
+                        return std::count(r.begin(), r.end(), d) + partial_sum;
+                      },
+                      std::plus<unsigned int>());
 
-                    res.importer = this;
-                    res.scratch_buffer = unbuf;
-                    res.begin_pos = 0;
-                    res.end_pos = unbuf->size();
-                    res.total_size = unbuf->size();
-                    res.columnIdToRenderGroupAnalyzerMap =
-                        &columnIdToRenderGroupAnalyzerMap;
-                    res.first_row_index_this_buffer = first_row_index_this_buffer;
-                    res.loader = loader.get();
+                  res.importer = this;
+                  res.scratch_buffer = unbuf;
+                  res.begin_pos = 0;
+                  res.end_pos = unbuf->size();
+                  res.total_size = unbuf->size();
+                  res.columnIdToRenderGroupAnalyzerMap =
+                      &columnIdToRenderGroupAnalyzerMap;
+                  res.first_row_index_this_buffer = first_row_index_this_buffer;
+                  res.loader = loader.get();
 
-                    first_row_index_this_buffer += num_rows_this_buffer;
+                  first_row_index_this_buffer += num_rows_this_buffer;
 
-                    nresidual = size - end_pos;
-                    total_2_last_part += (double)measure<>::execution([&]() {
-                      unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
-                      if (nresidual > 0) {
-                        memcpy(
-                            unbuf->data(), scratch_buffer->data() + end_pos, nresidual);
-                      }
-                    });
-                  });
+                  nresidual = size - end_pos;
+                  unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
+                  if (nresidual > 0) {
+                    memcpy(unbuf->data(), scratch_buffer->data() + end_pos, nresidual);
+                  }
                   return res;
                 }) &
             tbb::make_filter<ImportDelimitedParams, void>(
                 tbb::filter::parallel, [&](ImportDelimitedParams params) {
-                  total_import += (double)measure<>::execution([&]() {
-                    auto status =
-                        import_thread_delimited(params.importer,
-                                                params.scratch_buffer,
-                                                params.begin_pos,
-                                                params.end_pos,
-                                                params.total_size,
-                                                params.columnIdToRenderGroupAnalyzerMap,
-                                                params.first_row_index_this_buffer,
-                                                params.loader);
-                  });
+                  auto status =
+                      import_thread_delimited(params.importer,
+                                              params.scratch_buffer,
+                                              params.begin_pos,
+                                              params.end_pos,
+                                              params.total_size,
+                                              params.columnIdToRenderGroupAnalyzerMap,
+                                              params.first_row_index_this_buffer,
+                                              params.loader);
                 }));
-    std::cout << "Time in first filter: " << total_first_filter / 1000 << " s"
-              << std::endl;
-    std::cout << "Time in second filter: " << total_second_filter / 1000 << " s"
-              << std::endl;
-    std::cout << "Time in second filter(copy): " << total_2_copy / 1000 << " s"
-              << std::endl;
-    std::cout << "Time in second filter(count): " << total_2_count_rows / 1000 << " s"
-              << std::endl;
-    std::cout << "Time in second filter(last): " << total_2_last_part / 1000 << " s"
-              << std::endl;
-    std::cout << "Time in import delimited: " << (double)total_import.load() / 1000 / max_threads << " s"
-              << std::endl;
   }
 
   // must set import_status.load_truncated before closing this end of pipe
