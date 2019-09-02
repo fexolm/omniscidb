@@ -3532,7 +3532,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
   auto start_epoch = loader->getTableEpoch();
   {
-    auto unbuf = std::make_shared<std::vector<char>>(alloc_size);
+    auto unbuf = std::make_shared<std::vector<char>>();
+    unbuf.reserve(alloc_size);
 
     std::atomic<int> total_import = 0;
     tbb::parallel_pipeline(
@@ -3571,32 +3572,31 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
             tbb::make_filter<std::shared_ptr<std::vector<char>>, void>(
                 tbb::filter::serial,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
-                  tbb::parallel_for(
-                    tbb::blocked_range<int>(0, 
-                      scratch_buffer->size()),
-                      [&](tbb::blocked_range<int>& range) {
-                        auto begin = scratch_buffer->begin() + range.begin();
-                        auto end = scratch_buffer->begin() + range.end();
-                        // find first symbol in this block
-                        if (begin != scratch_buffer->begin()) {
-                          --begin;
-                          while (*begin != copy_params.line_delim) {
-                            ++begin;
-                          }
-                        }
-                        while (*end != copy_params.line_delim &&
-                               end != scratch_buffer->end()) {
-                          ++end;
-                        }
-                        import_thread_delimited(
-                            this,
-                            scratch_buffer,
-                            std::distance(scratch_buffer->begin(), begin),
-                            std::distance(scratch_buffer->begin(), end),
-                            scratch_buffer->size(),
-                            &columnIdToRenderGroupAnalyzerMap,
-                            loader.get());
-                      });
+                  tbb::parallel_for(tbb::blocked_range<int>(0, scratch_buffer->size()),
+                                    [&](tbb::blocked_range<int>& range) {
+                                      auto begin =
+                                          scratch_buffer->begin() + range.begin();
+                                      auto end = scratch_buffer->begin() + range.end();
+                                      // find first symbol in this block
+                                      if (begin != scratch_buffer->begin()) {
+                                        --begin;
+                                        while (*begin != copy_params.line_delim) {
+                                          ++begin;
+                                        }
+                                      }
+                                      while (*end != copy_params.line_delim &&
+                                             end != scratch_buffer->end()) {
+                                        ++end;
+                                      }
+                                      import_thread_delimited(
+                                          this,
+                                          scratch_buffer,
+                                          std::distance(scratch_buffer->begin(), begin),
+                                          std::distance(scratch_buffer->begin(), end),
+                                          scratch_buffer->size(),
+                                          &columnIdToRenderGroupAnalyzerMap,
+                                          loader.get());
+                                    });
                 }));
   }
 
