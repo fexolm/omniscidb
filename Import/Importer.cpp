@@ -3570,34 +3570,36 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
             tbb::make_filter<std::shared_ptr<std::vector<char>>, void>(
                 tbb::filter::serial,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
-                  tbb::parallel_for(tbb::blocked_range<int>(0, scratch_buffer->size(), 2048),
-                                    [&](tbb::blocked_range<int>& range) {
-                                      std::cout << range.end() - range.begin() << std::endl;
-                                      auto begin =
-                                          scratch_buffer->begin() + range.begin();
-                                      auto end = scratch_buffer->begin() + range.end();
-                                      // find first symbol in this block
-                                      if (begin != scratch_buffer->begin()) {
-                                        --begin;
-                                        while (*begin != copy_params.line_delim && begin != scratch_buffer->end()) {
-                                          ++begin;
-                                        }
-                                        if(begin != scratch_buffer->end())
-                                          ++begin;
-                                      }
-                                      while (*end != copy_params.line_delim &&
-                                             end != scratch_buffer->end()) {
-                                        ++end;
-                                      }
-                                      import_thread_delimited(
-                                          this,
-                                          scratch_buffer,
-                                          std::distance(scratch_buffer->begin(), begin),
-                                          std::distance(scratch_buffer->begin(), end),
-                                          scratch_buffer->size(),
-                                          &columnIdToRenderGroupAnalyzerMap,
-                                          loader.get());
-                                    });
+                  tbb::parallel_for(
+                      tbb::blocked_range<int>(0, scratch_buffer->size(), 2048),
+                      [&](tbb::blocked_range<int>& range) {
+                        auto begin = scratch_buffer->begin() + range.begin();
+                        auto end = scratch_buffer->begin() + range.end();
+                        // find first symbol in this block
+                        if (begin != scratch_buffer->begin()) {
+                          --begin;
+                          while (*begin != copy_params.line_delim &&
+                                 begin != scratch_buffer->end()) {
+                            ++begin;
+                          }
+                          if (begin != scratch_buffer->end())
+                            ++begin;
+                        }
+                        while (*end != copy_params.line_delim &&
+                               end != scratch_buffer->end()) {
+                          ++end;
+                        }
+                        if (begin != end) {
+                          import_thread_delimited(
+                              this,
+                              scratch_buffer,
+                              std::distance(scratch_buffer->begin(), begin),
+                              std::distance(scratch_buffer->begin(), end),
+                              scratch_buffer->size(),
+                              &columnIdToRenderGroupAnalyzerMap,
+                              loader.get());
+                        }
+                      });
                 }));
   }
 
