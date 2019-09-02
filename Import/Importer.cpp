@@ -3564,12 +3564,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   } else {
                     end_pos = find_end(scratch_buffer->data(), size, copy_params);
                   }
-                  std::copy(scratch_buffer->begin(), scratch_buffer->begin() + end_pos(), unbuf->begin() + nresidual);
+                  std::copy(scratch_buffer->begin(), scratch_buffer->begin() + end_pos, unbuf->begin() + nresidual);
                   unbuf->resize(nresidual + end_pos);
-
-                  auto p = unbuf->data();
-                  auto pend = unbuf->data() + unbuf->size();
-                  char d = copy_params.line_delim;
 
                   res.importer = this;
                   res.scratch_buffer = unbuf;
