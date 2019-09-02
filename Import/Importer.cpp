@@ -3572,11 +3572,11 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                 tbb::filter::serial,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
                   tbb::parallel_for(
-                      scratch_buffer->begin(),
-                      scratch_buffer->end(),
-                      [&](tbb::blocked_range<std::vector<char>::iterator>& range) {
-                        auto begin = range.begin();
-                        auto end = range.end();
+                      0,
+                      scratch_buffer->size(),
+                      [&](tbb::blocked_range<int>& range) {
+                        auto begin = scratch_buffer->begin() + range.begin();
+                        auto end = scratch_buffer->begin() + range.end();
                         // find first symbol in this block
                         if (begin != scratch_buffer->begin()) {
                           --begin;
