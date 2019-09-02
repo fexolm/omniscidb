@@ -3570,7 +3570,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
             tbb::make_filter<std::shared_ptr<std::vector<char>>, void>(
                 tbb::filter::serial,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
-                  tbb::parallel_for(tbb::blocked_range<int>(0, scratch_buffer->size()),
+                  tbb::parallel_for(tbb::blocked_range<int>(0, scratch_buffer->size(), 2048),
                                     [&](tbb::blocked_range<int>& range) {
                                       std::cout << range.end() - range.begin() << std::endl;
                                       auto begin =
