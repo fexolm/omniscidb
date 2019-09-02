@@ -3564,7 +3564,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   } else {
                     end_pos = find_end(scratch_buffer->data(), size, copy_params);
                   }
-                  memcpy(unbuf->data() + nresidual, scratch_buffer->data(), end_pos);
+                  std::copy(scratch_buffer->begin(), scratch_buffer->begin() + end_pos(), unbuf->begin() + nresidual);
                   unbuf->resize(nresidual + end_pos);
 
                   auto p = unbuf->data();
@@ -3583,7 +3583,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                   nresidual = size - end_pos;
                   unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
                   if (nresidual > 0) {
-                    memcpy(unbuf->data(), scratch_buffer->data() + end_pos, nresidual);
+                    std::copy(scratch_buffer->begin() + end_pos, scratch_buffer->begin() + nresidual, unbuf->begin());
                   }
                   return res;
                 }) &
