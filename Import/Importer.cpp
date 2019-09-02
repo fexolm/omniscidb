@@ -3579,9 +3579,9 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                         auto end = range.end();
                         // find first symbol in this block
                         if (begin != scratch_buffer->begin()) {
-                          --range;
-                          while (*range != copy_params.line_delim) {
-                            ++range;
+                          --begin;
+                          while (*begin != copy_params.line_delim) {
+                            ++begin;
                           }
                         }
                         while (*end != copy_params.line_delim &&
