@@ -3533,7 +3533,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
   auto start_epoch = loader->getTableEpoch();
   {
     auto unbuf = std::make_shared<std::vector<char>>();
-    unbuf.reserve(alloc_size);
+    unbuf->reserve(alloc_size);
 
     std::atomic<int> total_import = 0;
     tbb::parallel_pipeline(
