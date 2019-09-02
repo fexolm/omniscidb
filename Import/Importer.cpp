@@ -75,7 +75,7 @@
 #include "Utils/StringConversions.h"
 
 #include <tbb/blocked_range.h>
-#include <tbb/parallel_reduce.h>
+#include <tbb/parallel_for.h>
 #include <tbb/pipeline.h>
 #include <unistd.h>
 #include <atomic>
@@ -1808,7 +1808,7 @@ static ImportStatus import_thread_delimited(
   auto ms = measure<>::execution([&]() {
     const CopyParams& copy_params = importer->get_copy_params();
     const std::list<const ColumnDescriptor*>& col_descs = importer->get_column_descs();
-    size_t begin = find_beginning(buffer, begin_pos, end_pos, copy_params);
+    size_t begin = begin_pos;
     char* thread_buf = buffer + begin_pos + begin;
     const char* thread_buf_end = buffer + end_pos;
     const char* buf_end = buffer + total_size;
@@ -3532,68 +3532,70 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
   auto start_epoch = loader->getTableEpoch();
   {
-    int nresidual = 0;
     auto unbuf = std::make_shared<std::vector<char>>(alloc_size);
 
     std::atomic<int> total_import = 0;
     tbb::parallel_pipeline(
-        max_threads,
+        3,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
             tbb::filter::serial_in_order,
             [&](tbb::flow_control& fc) {
-              std::shared_ptr<std::vector<char>> scratch_buffer;
-              size_t size;
-              scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
-              size = fread(
-                  reinterpret_cast<void*>(scratch_buffer->data()), 1, alloc_size, p_file);
-              scratch_buffer->resize(size);
-              if (size <= 0) {
-                fc.stop();
-                return std::make_shared<std::vector<char>>();
-              }
-              return scratch_buffer;
+      std::shared_ptr<std::vector<char>> scratch_buffer;
+      size_t size;
+      scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
+      size = fread(reinterpret_cast<void*>(scratch_buffer->data() + ubbuf->size()),
+                   1,
+                   alloc_size - ubbuf->size(),
+                   p_file);
+      scratch_buffer->resize(size + ubbuf->size());
+      std::copy(unbuf->begin(), unbuf->end(), scratch_buffer->begin());
+      if (size <= 0) {
+        fc.stop();
+        return std::make_shared<std::vector<char>>();
+      }
+      int end_pos;
+      auto size = scratch_buffer->size();
+      if (size < copy_params.buffer_size) {
+        end_pos = size;
+      } else {
+        end_pos = find_end(scratch_buffer->data(), size, copy_params);
+      }
+      ubbuf->resize(size - end_pos);
+      std::copy(scratch_buffer->begin() + end_pos,
+                scratch_buffer->begin() + end_pos + ubbuf.size(),
+                unbuf->begin());
+      scratch_buffer->resize(end_pos);
+      return scratch_buffer;
             }) &
-            tbb::make_filter<std::shared_ptr<std::vector<char>>, ImportDelimitedParams>(
-                tbb::filter::serial_in_order,
+            tbb::make_filter<std::shared_ptr<std::vector<char>>, void>(
+                tbb::filter::serial,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
-                  ImportDelimitedParams res;
-                  int end_pos;
-                  auto size = scratch_buffer->size();
-                  if (size < copy_params.buffer_size) {
-                    end_pos = size;
-                  } else {
-                    end_pos = find_end(scratch_buffer->data(), size, copy_params);
-                  }
-                  unbuf->resize(nresidual + end_pos);
-                  std::copy(scratch_buffer->begin(), scratch_buffer->begin() + end_pos, unbuf->begin() + nresidual);
-
-                  res.importer = this;
-                  res.scratch_buffer = unbuf;
-                  res.begin_pos = 0;
-                  res.end_pos = unbuf->size();
-                  res.total_size = unbuf->size();
-                  res.columnIdToRenderGroupAnalyzerMap =
-                      &columnIdToRenderGroupAnalyzerMap;
-                  res.loader = loader.get();
-
-                  nresidual = size - end_pos;
-                  unbuf = std::make_shared<std::vector<char>>(alloc_size + nresidual);
-                  if (nresidual > 0) {
-                    std::copy(scratch_buffer->begin() + end_pos, scratch_buffer->begin() + end_pos + nresidual, unbuf->begin());
-                  }
-                  return res;
-                }) &
-            tbb::make_filter<ImportDelimitedParams, void>(
-                tbb::filter::parallel, [&](ImportDelimitedParams params) {
-                  auto status =
-                      import_thread_delimited(params.importer,
-                                              params.scratch_buffer,
-                                              params.begin_pos,
-                                              params.end_pos,
-                                              params.total_size,
-                                              params.columnIdToRenderGroupAnalyzerMap,
-                                              params.loader);
-                }));
+      tbb::parallel_for(scratch_buffer->begin(),
+                        scratch_buffer->end(),
+                        [&](tbb::blocked_range<std::vector<char>::Iterator>& range) {
+                          auto begin = range.begin();
+                          auto end = range.end();
+                          // find first symbol in this block
+                          if (begin != scratch_buffer->begin()) {
+                            --range;
+                            while (*range != copy_params.line_delim) {
+                              ++range;
+                            }
+                          }
+                          while (*end != copy_params.line_delim &&
+                                 end != scratch_buffer->begin() + end_pos) {
+                            ++end;
+                          }
+                          import_thread_delimited(
+                              this,
+                              scratch_buffer,
+                              std::distance(scratch_buffer->begin(), begin),
+                              std::distance(scratch_buffer->begin(), end),
+                              scratch_buffer->size(),
+                              &columnIdToRenderGroupAnalyzerMap,
+                              loader.get());
+                        });
+                });
   }
 
   // must set import_status.load_truncated before closing this end of pipe
