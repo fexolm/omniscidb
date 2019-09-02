@@ -3541,10 +3541,8 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
             tbb::filter::serial_in_order,
             [&](tbb::flow_control& fc) {
-              std::shared_ptr<std::vector<char>> scratch_buffer;
-              size_t size;
-              scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
-              size =
+              auto scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
+              auto size =
                   fread(reinterpret_cast<void*>(scratch_buffer->data() + unbuf->size()),
                         1,
                         alloc_size - unbuf->size(),
@@ -3583,6 +3581,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                         while (*begin != copy_params.line_delim) {
                                           ++begin;
                                         }
+                                        ++begin;
                                       }
                                       while (*end != copy_params.line_delim &&
                                              end != scratch_buffer->end()) {
