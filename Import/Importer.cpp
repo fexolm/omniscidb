@@ -3543,26 +3543,25 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
       std::shared_ptr<std::vector<char>> scratch_buffer;
       size_t size;
       scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
-      size = fread(reinterpret_cast<void*>(scratch_buffer->data() + ubbuf->size()),
+      size = fread(reinterpret_cast<void*>(scratch_buffer->data() + unbuf->size()),
                    1,
-                   alloc_size - ubbuf->size(),
+                   alloc_size - unbuf->size(),
                    p_file);
-      scratch_buffer->resize(size + ubbuf->size());
+      scratch_buffer->resize(size + unbuf->size());
       std::copy(unbuf->begin(), unbuf->end(), scratch_buffer->begin());
       if (size <= 0) {
         fc.stop();
         return std::make_shared<std::vector<char>>();
       }
       int end_pos;
-      auto size = scratch_buffer->size();
       if (size < copy_params.buffer_size) {
-        end_pos = size;
+        end_pos = scratch_buffer->size();
       } else {
-        end_pos = find_end(scratch_buffer->data(), size, copy_params);
+        end_pos = find_end(scratch_buffer->data(), scratch_buffer->size(), copy_params);
       }
-      ubbuf->resize(size - end_pos);
+      unbuf->resize(scratch_buffer->size() - end_pos);
       std::copy(scratch_buffer->begin() + end_pos,
-                scratch_buffer->begin() + end_pos + ubbuf.size(),
+                scratch_buffer->begin() + end_pos + unbuf.size(),
                 unbuf->begin());
       scratch_buffer->resize(end_pos);
       return scratch_buffer;
@@ -3572,7 +3571,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
       tbb::parallel_for(scratch_buffer->begin(),
                         scratch_buffer->end(),
-                        [&](tbb::blocked_range<std::vector<char>::Iterator>& range) {
+                        [&](tbb::blocked_range<std::vector<char>::iterator>& range) {
                           auto begin = range.begin();
                           auto end = range.end();
                           // find first symbol in this block
@@ -3583,7 +3582,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                             }
                           }
                           while (*end != copy_params.line_delim &&
-                                 end != scratch_buffer->begin() + end_pos) {
+                                 end != scratch_buffer.end()) {
                             ++end;
                           }
                           import_thread_delimited(
