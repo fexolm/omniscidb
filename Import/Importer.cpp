@@ -3471,16 +3471,6 @@ ImportStatus Importer::import() {
   return DataStreamSink::archivePlumber();
 }
 
-struct ImportDelimitedParams {
-  Importer* importer;
-  std::shared_ptr<std::vector<char>> scratch_buffer;
-  size_t begin_pos;
-  size_t end_pos;
-  size_t total_size;
-  const ColumnIdToRenderGroupAnalyzerMapType* columnIdToRenderGroupAnalyzerMap;
-  Loader* loader;
-};
-
 ImportStatus Importer::importDelimited(const std::string& file_path,
                                        const bool decompressed) {
   bool load_truncated = false;
@@ -3590,6 +3580,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                end != scratch_buffer->end()) {
                           ++end;
                         }
+                        ++end;
                         if (begin != end) {
                           import_thread_delimited(
                               this,
