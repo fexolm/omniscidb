@@ -3538,12 +3538,12 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                         p_file);
               scratch_buffer->resize(size + unbuf->size());
               std::copy(unbuf->begin(), unbuf->end(), scratch_buffer->begin());
-              if (size <= 0) {
+              if (scratch_buffer->size()  <= 0) {
                 fc.stop();
                 return std::make_shared<std::vector<char>>();
               }
               int end_pos;
-              if (size < copy_params.buffer_size) {
+              if (scratch_buffer->size() < copy_params.buffer_size) {
                 end_pos = scratch_buffer->size();
               } else {
                 end_pos =
@@ -3560,7 +3560,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                 tbb::filter::serial,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
                   tbb::parallel_for(
-                      tbb::blocked_range<int>(0, scratch_buffer->size(), 2048),
+                      tbb::blocked_range<int>(0, scratch_buffer->size()),
                       [&](tbb::blocked_range<int>& range) {
                         auto begin = scratch_buffer->begin() + range.begin();
                         auto end = scratch_buffer->begin() + range.end();
