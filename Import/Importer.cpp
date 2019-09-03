@@ -3471,6 +3471,30 @@ ImportStatus Importer::import() {
   return DataStreamSink::archivePlumber();
 }
 
+auto read_chunk(std::shared_ptr<std::vector<char>> &unbuf, size_t alloc_size, FILE* p_file, tbb::flow_control& fc) {
+  auto scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
+  auto size = fread(reinterpret_cast<void*>(scratch_buffer->data() + unbuf->size()),
+                    1,
+                    alloc_size - unbuf->size(),
+                    p_file);
+  scratch_buffer->resize(size + unbuf->size());
+  std::copy(unbuf->begin(), unbuf->end(), scratch_buffer->begin());
+  if (scratch_buffer->size() <= 0) {
+    fc.stop();
+    return std::make_shared<std::vector<char>>();
+  }
+  int end_pos;
+  if (scratch_buffer->size() < copy_params.buffer_size) {
+    end_pos = scratch_buffer->size();
+  } else {
+    end_pos = find_end(scratch_buffer->data(), scratch_buffer->size(), copy_params);
+  }
+  unbuf->resize(scratch_buffer->size() - end_pos);
+  std::copy(scratch_buffer->begin() + end_pos, scratch_buffer->end(), unbuf->begin());
+  scratch_buffer->resize(end_pos);
+  return scratch_buffer;
+}
+
 ImportStatus Importer::importDelimited(const std::string& file_path,
                                        const bool decompressed) {
   bool load_truncated = false;
@@ -3530,31 +3554,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
             tbb::filter::serial_in_order,
             [&](tbb::flow_control& fc) {
-              auto scratch_buffer = std::make_shared<std::vector<char>>(alloc_size);
-              auto size =
-                  fread(reinterpret_cast<void*>(scratch_buffer->data() + unbuf->size()),
-                        1,
-                        alloc_size - unbuf->size(),
-                        p_file);
-              scratch_buffer->resize(size + unbuf->size());
-              std::copy(unbuf->begin(), unbuf->end(), scratch_buffer->begin());
-              if (scratch_buffer->size()  <= 0) {
-                fc.stop();
-                return std::make_shared<std::vector<char>>();
-              }
-              int end_pos;
-              if (scratch_buffer->size() < copy_params.buffer_size) {
-                end_pos = scratch_buffer->size();
-              } else {
-                end_pos =
-                    find_end(scratch_buffer->data(), scratch_buffer->size(), copy_params);
-              }
-              unbuf->resize(scratch_buffer->size() - end_pos);
-              std::copy(scratch_buffer->begin() + end_pos,
-                        scratch_buffer->end(),
-                        unbuf->begin());
-              scratch_buffer->resize(end_pos);
-              return scratch_buffer;
+              return read_chunk(unbuf, alloc_size, p_file, fc);
             }) &
             tbb::make_filter<std::shared_ptr<std::vector<char>>, void>(
                 tbb::filter::serial,
