@@ -3526,7 +3526,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
     std::atomic<int> total_import = 0;
     tbb::parallel_pipeline(
-        3,
+        5,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
             tbb::filter::serial_in_order,
             [&](tbb::flow_control& fc) {
@@ -3557,7 +3557,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
               return scratch_buffer;
             }) &
             tbb::make_filter<std::shared_ptr<std::vector<char>>, void>(
-                tbb::filter::serial,
+                tbb::filter::parallel,
                 [&](std::shared_ptr<std::vector<char>> scratch_buffer) {
                   tbb::parallel_for(
                       tbb::blocked_range<int>(0, scratch_buffer->size()),
