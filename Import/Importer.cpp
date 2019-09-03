@@ -3526,7 +3526,7 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
 
     std::atomic<int> total_import = 0;
     tbb::parallel_pipeline(
-        3,
+        1,
         tbb::make_filter<void, std::shared_ptr<std::vector<char>>>(
             tbb::filter::serial_in_order,
             [&](tbb::flow_control& fc) {
