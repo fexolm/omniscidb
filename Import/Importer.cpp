@@ -1808,8 +1808,7 @@ static ImportStatus import_thread_delimited(
   auto ms = measure<>::execution([&]() {
     const CopyParams& copy_params = importer->get_copy_params();
     const std::list<const ColumnDescriptor*>& col_descs = importer->get_column_descs();
-    size_t begin = begin_pos;
-    char* thread_buf = buffer + begin_pos + begin;
+    char* thread_buf = buffer + begin_pos;
     const char* thread_buf_end = buffer + end_pos;
     const char* buf_end = buffer + total_size;
     bool try_single_thread = false;
@@ -3582,9 +3581,11 @@ ImportStatus Importer::importDelimited(const std::string& file_path,
                                  begin != scratch_buffer->end()) {
                             ++begin;
                           }
-                          if (begin != scratch_buffer->end())
+                          if (begin != scratch_buffer->end()) {
                             ++begin;
+                          }
                         }
+                        --end;
                         while (*end != copy_params.line_delim &&
                                end != scratch_buffer->end()) {
                           ++end;
