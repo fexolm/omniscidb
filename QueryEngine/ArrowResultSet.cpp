@@ -226,8 +226,8 @@ void ArrowResultSet::resultSetArrowLoopback() {
   ARROW_THROW_NOT_OK(arrow::ipc::ReadSchema(&schema_reader, &dictionary_memo, &schema));
 
   arrow::io::BufferReader records_reader(serialized_arrow_output.records);
-  ARROW_THROW_NOT_OK(
-      arrow::ipc::ReadRecordBatch(schema, &dictionary_memo, &records_reader, &record_batch_));
+  ARROW_THROW_NOT_OK(arrow::ipc::ReadRecordBatch(
+      schema, &dictionary_memo, &records_reader, &record_batch_));
 
   CHECK_EQ(schema->num_fields(), record_batch_->num_columns());
 }

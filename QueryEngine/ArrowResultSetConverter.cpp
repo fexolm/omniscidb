@@ -272,8 +272,10 @@ ArrowResultSetConverter::getSerializedArrowOutput() const {
   std::shared_ptr<arrow::RecordBatch> arrow_copy = convertToArrow(dict_memo);
   std::shared_ptr<arrow::Buffer> serialized_records, serialized_schema;
 
-  ARROW_THROW_NOT_OK(arrow::ipc::SerializeSchema(
-      *arrow_copy->schema(), &dict_memo, arrow::default_memory_pool(), &serialized_schema));
+  ARROW_THROW_NOT_OK(arrow::ipc::SerializeSchema(*arrow_copy->schema(),
+                                                 &dict_memo,
+                                                 arrow::default_memory_pool(),
+                                                 &serialized_schema));
 
   if (arrow_copy->num_rows()) {
     ARROW_THROW_NOT_OK(arrow_copy->Validate());
@@ -722,6 +724,7 @@ void print_serialized_records(const uint8_t* data,
   arrow::ipc::DictionaryMemo dictionary_memo;
 
   io::BufferReader buffer_reader(std::make_shared<arrow::Buffer>(data, length));
-  ARROW_THROW_NOT_OK(ipc::ReadRecordBatch(schema, &dictionary_memo, &buffer_reader, &batch));
+  ARROW_THROW_NOT_OK(
+      ipc::ReadRecordBatch(schema, &dictionary_memo, &buffer_reader, &batch));
 }
 #endif
