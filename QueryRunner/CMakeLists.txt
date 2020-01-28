@@ -11,4 +11,4 @@ endif()
 
 add_library(QueryRunner ${query_runner_source_files})
 add_dependencies(QueryRunner Parser)
-target_link_libraries(QueryRunner ${MAPD_LIBRARIES} ${Boost_LIBRARIES})
+target_link_libraries(QueryRunner QueryState CsvImport ${MAPD_LIBRARIES} ${Boost_LIBRARIES})

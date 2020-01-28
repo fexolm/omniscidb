@@ -1,7 +1,11 @@
 # fixme: this should be 3.3, but that breaks static ncurses
 cmake_minimum_required(VERSION 3.2)
 
-# force `Release` build type if left unspecified
+set(CMAKE_CXX_FLAGS "-fPIC ")
+set(CMAKE_C_FLAGS "-fPIC ")
+
+set(CMAKE_SHARED_LINKER_FLAGS " --no-undefined")
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
@@ -488,7 +492,7 @@ add_subdirectory(Utils)
 add_subdirectory(QueryRunner)
 add_subdirectory(SQLFrontend)
 add_subdirectory(ThriftHandler)
-
+add_subdirectory(Wrapper)
 option(ENABLE_ODBC "Build ODBC driver" OFF)
 if(ENABLE_ODBC)
   add_subdirectory(ODBC)
