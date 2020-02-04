@@ -90,7 +90,7 @@ const uint64_t round_up_p2(const uint64_t num) {
   return in;
 }
 
-uint32_t rk_hash(const std::string& str) {
+uint32_t rk_hash(const std::string_view& str) {
   uint32_t str_hash = 1;
   // rely on fact that unsigned overflow is defined and wraps
   for (size_t i = 0; i < str.size(); ++i) {
@@ -252,7 +252,7 @@ StringDictionary::~StringDictionary() noexcept {
 int32_t StringDictionary::getOrAdd(const std::string& str) noexcept {
   if (client_) {
     std::vector<int32_t> string_ids;
-    client_->get_or_add_bulk(string_ids, {str});
+    client_->get_or_add_bulk(string_ids, std::vector<std::string>{str});
     CHECK_EQ(size_t(1), string_ids.size());
     return string_ids.front();
   }
@@ -262,7 +262,7 @@ int32_t StringDictionary::getOrAdd(const std::string& str) noexcept {
 namespace {
 
 template <class T>
-void log_encoding_error(const std::string& str) {
+void log_encoding_error(std::string_view str) {
   LOG(ERROR) << "Could not encode string: " << str
              << ", the encoded value doesn't fit in " << sizeof(T) * 8
              << " bits. Will store NULL instead.";
@@ -275,7 +275,8 @@ void log_encoding_error(const std::string& str) {
  * @param string_vec input vector of strings to be hashed
  * @param hashes space for the output - should be pre-sized to match string_vec size
  */
-void StringDictionary::hashStrings(const std::vector<std::string>& string_vec,
+template <class String>
+void StringDictionary::hashStrings(const std::vector<String>& string_vec,
                                    std::vector<uint32_t>& hashes) const noexcept {
   CHECK_EQ(string_vec.size(), hashes.size());
   const size_t min_target_strings_per_thread{2000};
@@ -288,42 +289,36 @@ void StringDictionary::hashStrings(const std::vector<std::string>& string_vec,
   auto tg = arrow::internal::TaskGroup::MakeThreaded(tp);
 
   for (size_t string_id = 0; string_id < str_count; string_id += items_per_thread) {
-    tg->Append(
-        [&string_vec, &hashes, string_id, str_count, items_per_thread]() {
-          const size_t end_id = std::min(string_id + items_per_thread, str_count);
-          for (size_t curr_id = string_id; curr_id < end_id; ++curr_id) {
-            if (string_vec[curr_id].empty()) {
-              continue;
-            }
-            hashes[curr_id] = rk_hash(string_vec[curr_id]);
-          }
-          return arrow::Status::OK();
-        });
+    tg->Append([&string_vec, &hashes, string_id, str_count, items_per_thread]() {
+      const size_t end_id = std::min(string_id + items_per_thread, str_count);
+      for (size_t curr_id = string_id; curr_id < end_id; ++curr_id) {
+        if (string_vec[curr_id].empty()) {
+          continue;
+        }
+        hashes[curr_id] = rk_hash(string_vec[curr_id]);
+      }
+      return arrow::Status::OK();
+    });
   }
   ARROW_THROW_NOT_OK(tg->Finish());
 }
 
-void StringDictionary::getOrAddBulkArray(
-    const std::vector<std::vector<std::string>>& string_array_vec,
-    std::vector<std::vector<int32_t>>& ids_array_vec) {
-  ids_array_vec.resize(string_array_vec.size());
-  for (size_t i = 0; i < string_array_vec.size(); i++) {
-    auto& strings = string_array_vec[i];
-    auto& ids = ids_array_vec[i];
-    ids.resize(strings.size());
-    getOrAddBulk(strings, &ids[0]);
-  }
-}
+template void StringDictionary::hashStrings(const std::vector<std::string>& string_vec,
+                                            std::vector<uint32_t>& hashes) const noexcept;
 
-template <class T>
-void StringDictionary::getOrAddBulk(const std::vector<std::string>& string_vec,
+template void StringDictionary::hashStrings(
+    const std::vector<std::string_view>& string_vec,
+    std::vector<uint32_t>& hashes) const noexcept;
+
+template <class T, class String>
+void StringDictionary::getOrAddBulk(const std::vector<String>& string_vec,
                                     T* encoded_vec) {
   if (client_no_timeout_) {
     getOrAddBulkRemote(string_vec, encoded_vec);
     return;
   }
   size_t out_idx{0};
-  
+
   // Run rk_hash on the input strings up front, and in parallel,
   // as the string hashing does not need to be behind the subsequent write_lock
   std::vector<uint32_t> hashes(string_vec.size());
@@ -381,8 +376,41 @@ template void StringDictionary::getOrAddBulk(const std::vector<std::string>& str
 template void StringDictionary::getOrAddBulk(const std::vector<std::string>& string_vec,
                                              int32_t* encoded_vec);
 
-template <class T>
-void StringDictionary::getOrAddBulkRemote(const std::vector<std::string>& string_vec,
+template void StringDictionary::getOrAddBulk(
+    const std::vector<std::string_view>& string_vec,
+    uint8_t* encoded_vec);
+template void StringDictionary::getOrAddBulk(
+    const std::vector<std::string_view>& string_vec,
+    uint16_t* encoded_vec);
+template void StringDictionary::getOrAddBulk(
+    const std::vector<std::string_view>& string_vec,
+    int32_t* encoded_vec);
+
+template <class String>
+void StringDictionary::getOrAddBulkArray(
+    const std::vector<std::vector<String>>& string_array_vec,
+    std::vector<std::vector<int32_t>>& ids_array_vec) {
+  std::cout << "getOrAddBulkArray" << std::endl;
+
+  ids_array_vec.resize(string_array_vec.size());
+  for (size_t i = 0; i < string_array_vec.size(); i++) {
+    auto& strings = string_array_vec[i];
+    auto& ids = ids_array_vec[i];
+    ids.resize(strings.size());
+    getOrAddBulk(strings, &ids[0]);
+  }
+}
+
+template void StringDictionary::getOrAddBulkArray(
+    const std::vector<std::vector<std::string>>& string_array_vec,
+    std::vector<std::vector<int32_t>>& ids_array_vec);
+
+template void StringDictionary::getOrAddBulkArray(
+    const std::vector<std::vector<std::string_view>>& string_array_vec,
+    std::vector<std::vector<int32_t>>& ids_array_vec);
+
+template <class T, class String>
+void StringDictionary::getOrAddBulkRemote(const std::vector<String>& string_vec,
                                           T* encoded_vec) {
   CHECK(client_no_timeout_);
   std::vector<int32_t> string_ids;
@@ -410,6 +438,16 @@ template void StringDictionary::getOrAddBulkRemote(
     uint16_t* encoded_vec);
 template void StringDictionary::getOrAddBulkRemote(
     const std::vector<std::string>& string_vec,
+    int32_t* encoded_vec);
+
+template void StringDictionary::getOrAddBulkRemote(
+    const std::vector<std::string_view>& string_vec,
+    uint8_t* encoded_vec);
+template void StringDictionary::getOrAddBulkRemote(
+    const std::vector<std::string_view>& string_vec,
+    uint16_t* encoded_vec);
+template void StringDictionary::getOrAddBulkRemote(
+    const std::vector<std::string_view>& string_vec,
     int32_t* encoded_vec);
 
 int32_t StringDictionary::getIdOfString(const std::string& str) const {
@@ -939,7 +977,7 @@ std::pair<char*, size_t> StringDictionary::getStringBytesChecked(
 }
 
 uint32_t StringDictionary::computeBucket(const uint32_t hash,
-                                         const std::string str,
+                                         const std::string_view str,
                                          const std::vector<int32_t>& data,
                                          const bool unique) const noexcept {
   auto bucket = hash & (data.size() - 1);
@@ -956,7 +994,7 @@ uint32_t StringDictionary::computeBucket(const uint32_t hash,
           // can't be the same string if hash is different
           const auto old_str = getStringFromStorage(data[bucket]);
           if (str.size() == old_str.size &&
-              !memcmp(str.c_str(), old_str.c_str_ptr, str.size())) {
+              !memcmp(str.data(), old_str.c_str_ptr, str.size())) {
             // found the string
             break;
           }
@@ -964,7 +1002,7 @@ uint32_t StringDictionary::computeBucket(const uint32_t hash,
       } else {
         const auto old_str = getStringFromStorage(data[bucket]);
         if (str.size() == old_str.size &&
-            !memcmp(str.c_str(), old_str.c_str_ptr, str.size())) {
+            !memcmp(str.data(), old_str.c_str_ptr, str.size())) {
           // found the string
           break;
         }
@@ -995,7 +1033,7 @@ uint32_t StringDictionary::computeUniqueBucketWithHash(
   return bucket;
 }
 
-void StringDictionary::appendToStorage(const std::string& str) noexcept {
+void StringDictionary::appendToStorage(std::string_view str) noexcept {
   if (!isTemp_) {
     CHECK_GE(payload_fd_, 0);
     CHECK_GE(offset_fd_, 0);
@@ -1012,7 +1050,7 @@ void StringDictionary::appendToStorage(const std::string& str) noexcept {
       addPayloadCapacity();
     }
   }
-  memcpy(payload_map_ + payload_file_off_, str.c_str(), str.size());
+  memcpy(payload_map_ + payload_file_off_, str.data(), str.size());
   // write the offset and length
   size_t offset_file_off = str_count_ * sizeof(StringIdxEntry);
   StringIdxEntry str_meta{static_cast<uint64_t>(payload_file_off_), str.size()};

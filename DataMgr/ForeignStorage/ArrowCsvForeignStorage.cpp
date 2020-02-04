@@ -214,102 +214,114 @@ void ArrowCsvForeignStorage::createDictionaryEncodedColumn(
     ChunkKey key,
     Data_Namespace::AbstractBufferMgr* mgr) {
   tg->Append([dict, &c, &col, clp, tg, &fragments, key, mgr]() mutable {
-    auto empty = clp->null_count() == clp->length();
+    auto full_time = measure<>::execution([&]() {
+      auto empty = clp->null_count() == clp->length();
 
-    auto subg = tg->MakeSubGroup();
-    std::vector<std::vector<std::string>> bulk_array(fragments.size());
+      auto subg = tg->MakeSubGroup();
+      std::vector<std::vector<std::string_view>> bulk_array(fragments.size());
 
-    for (size_t f = 0; f < fragments.size(); f++) {
-      auto begin = fragments[f].first;
-      auto end = fragments[f].second;
-      subg->Append([&bulk_array, f, begin, end, empty, clp]() {
-        size_t bulk_size = 0;
-        for (int i = begin; i < end; i++) {
-          auto stringArray = std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-          bulk_size += stringArray->length();
-        }
-        bulk_array[f] = std::vector<std::string>(bulk_size);
-        size_t current_ind = 0;
-        for (int i = begin; i < end; i++) {
-          auto stringArray = std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-          for (int i = 0; i < stringArray->length(); i++) {
-            if (stringArray->IsNull(i) || empty ||
-                stringArray->null_count() == stringArray->length()) {
-              bulk_array[f][current_ind] = "";
-            } else {
-              bulk_array[f][current_ind] = stringArray->GetString(i);
-            }
-            current_ind++;
+      for (size_t f = 0; f < fragments.size(); f++) {
+        auto begin = fragments[f].first;
+        auto end = fragments[f].second;
+        subg->Append([&bulk_array, f, begin, end, empty, clp]() {
+          size_t bulk_size = 0;
+          for (int i = begin; i < end; i++) {
+            auto stringArray =
+                std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
+            bulk_size += stringArray->length();
           }
-        }
-        return arrow::Status::OK();
-      });
-    }
+          bulk_array[f] = std::vector<std::string_view>(bulk_size);
+          size_t current_ind = 0;
+          for (int i = begin; i < end; i++) {
+            auto stringArray =
+                std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
+            for (int i = 0; i < stringArray->length(); i++) {
+              bulk_array[f][current_ind] = stringArray->GetView(i);
+              current_ind++;
+            }
+          }
+          return arrow::Status::OK();
+        });
+      }
 
-    ARROW_THROW_NOT_OK(subg->Finish());
+      ARROW_THROW_NOT_OK(subg->Finish());
 
-    std::vector<std::vector<int>> indexes_bulk_array;
-    dict->getOrAddBulkArray(bulk_array, indexes_bulk_array);
+      std::vector<std::vector<int>> indexes_bulk_array;
+      auto time = measure<>::execution(
+          [&]() { dict->getOrAddBulkArray(bulk_array, indexes_bulk_array); });
 
-    for (size_t f = 0; f < fragments.size(); f++) {
-      auto begin = fragments[f].first;
-      auto end = fragments[f].second;
-      tg->Append([key, f, &col, begin, end, mgr, &c, clp, &indexes_bulk_array]() mutable {
-        key[3] = f;
-        auto& frag = col[f];
-        frag.chunks.resize(end - begin);
-        auto b = mgr->createBuffer(key);
-        b->sql_type = c.columnType;
-        b->encoder.reset(Encoder::Create(b, c.columnType));
-        b->has_encoder = true;
-        size_t current_ind = 0;
-        for (int i = begin; i < end; i++) {
-          auto stringArray = std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-          std::shared_ptr<arrow::Buffer> indices_buf;
-          RETURN_NOT_OK(arrow::AllocateBuffer(stringArray->length() * sizeof(int32_t),
-                                              &indices_buf));
+      int strings_count = 0;
+      for (int i = 0; i < indexes_bulk_array.size(); i++) {
+        strings_count += indexes_bulk_array[i].size();
+      }
 
-          auto raw_data = reinterpret_cast<int*>(indices_buf->mutable_data());
+      std::cout << "bulk insert time: " << time << "ms, strings count: " << strings_count
+                << ", unique_count: " << dict->storageEntryCount() << std::endl;
 
-          std::copy(indexes_bulk_array[f].begin() + current_ind,
+      for (size_t f = 0; f < fragments.size(); f++) {
+        auto begin = fragments[f].first;
+        auto end = fragments[f].second;
+        tg->Append(
+            [key, f, &col, begin, end, mgr, &c, clp, &indexes_bulk_array]() mutable {
+              key[3] = f;
+              auto& frag = col[f];
+              frag.chunks.resize(end - begin);
+              auto b = mgr->createBuffer(key);
+              b->sql_type = c.columnType;
+              b->encoder.reset(Encoder::Create(b, c.columnType));
+              b->has_encoder = true;
+              size_t current_ind = 0;
+              for (int i = begin; i < end; i++) {
+                auto stringArray =
+                    std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
+                std::shared_ptr<arrow::Buffer> indices_buf;
+                RETURN_NOT_OK(arrow::AllocateBuffer(
+                    stringArray->length() * sizeof(int32_t), &indices_buf));
+
+                auto raw_data = reinterpret_cast<int*>(indices_buf->mutable_data());
+
+                std::copy(
+                    indexes_bulk_array[f].begin() + current_ind,
                     indexes_bulk_array[f].begin() + current_ind + stringArray->length(),
                     raw_data);
 
-          auto indexArray =
-              std::make_shared<arrow::Int32Array>(stringArray->length(), indices_buf);
+                auto indexArray = std::make_shared<arrow::Int32Array>(
+                    stringArray->length(), indices_buf);
 
-          frag.chunks[i - begin] = ARROW_GET_DATA(indexArray);
-          frag.sz += stringArray->length();
-          current_ind += stringArray->length();
+                frag.chunks[i - begin] = ARROW_GET_DATA(indexArray);
+                frag.sz += stringArray->length();
+                current_ind += stringArray->length();
 
-          auto len = frag.chunks[i - begin]->length;
-          auto data = frag.chunks[i - begin]->buffers[1]->data();
-          b->encoder->updateStats((const int8_t*)data, len);
-        }
+                auto len = frag.chunks[i - begin]->length;
+                auto data = frag.chunks[i - begin]->buffers[1]->data();
+                b->encoder->updateStats((const int8_t*)data, len);
+              }
 
-        b->setSize(frag.sz * b->sql_type.get_size());
-        b->encoder->setNumElems(frag.sz);
-        return arrow::Status::OK();
-      });
-    }
-
-    for (size_t f = 0; f < fragments.size(); f++) {
-      auto begin = fragments[f].first;
-      auto end = fragments[f].second;
-      for (int i = begin; i < end; i++) {
-        auto stringArray = std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-        std::vector<std::string> strings(stringArray->length());
-        for (int i = 0; i < stringArray->length(); i++) {
-          if (stringArray->IsNull(i) || empty ||
-              stringArray->null_count() == stringArray->length()) {
-            strings[i] = "";
-          } else {
-            strings[i] = stringArray->GetString(i);
-          }
-        }
-        CHECK(dict);
+              b->setSize(frag.sz * b->sql_type.get_size());
+              b->encoder->setNumElems(frag.sz);
+              return arrow::Status::OK();
+            });
       }
-    }
+
+      for (size_t f = 0; f < fragments.size(); f++) {
+        auto begin = fragments[f].first;
+        auto end = fragments[f].second;
+        for (int i = begin; i < end; i++) {
+          auto stringArray = std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
+          std::vector<std::string> strings(stringArray->length());
+          for (int i = 0; i < stringArray->length(); i++) {
+            if (stringArray->IsNull(i) || empty ||
+                stringArray->null_count() == stringArray->length()) {
+              strings[i] = "";
+            } else {
+              strings[i] = stringArray->GetString(i);
+            }
+          }
+          CHECK(dict);
+        }
+      }
+    });
+    std::cout << "full time: " << full_time << "ms" << std::endl;
     return arrow::Status::OK();
   });
 }
@@ -320,179 +332,182 @@ void ArrowCsvForeignStorage::registerTable(Catalog_Namespace::Catalog* catalog,
                                            const TableDescriptor& td,
                                            const std::list<ColumnDescriptor>& cols,
                                            Data_Namespace::AbstractBufferMgr* mgr) {
-  auto memp = arrow::default_memory_pool();
-  auto popt = arrow::csv::ParseOptions::Defaults();
-  popt.quoting = false;
-  popt.escaping = false;
-  popt.newlines_in_values = false;
+  auto whole_import = measure<>::execution([&]() {
+    auto memp = arrow::default_memory_pool();
+    auto popt = arrow::csv::ParseOptions::Defaults();
+    popt.quoting = false;
+    popt.escaping = false;
+    popt.newlines_in_values = false;
 
-  auto ropt = arrow::csv::ReadOptions::Defaults();
-  ropt.use_threads = true;
-  ropt.block_size = 2 * 1024 * 1024;
+    auto ropt = arrow::csv::ReadOptions::Defaults();
+    ropt.use_threads = true;
+    ropt.block_size = 2 * 1024 * 1024;
 
-  auto copt = arrow::csv::ConvertOptions::Defaults();
-  copt.check_utf8 = false;
+    auto copt = arrow::csv::ConvertOptions::Defaults();
+    copt.check_utf8 = false;
 
 #if ARROW_VERSION >= 14900
-  ropt.skip_rows = 0;  // TODO: add a way to switch csv header on
-  ropt.autogenerate_column_names = true;
-  // ropt.column_names =
-  copt.include_columns = ropt.column_names;
+    ropt.skip_rows = 0;  // TODO: add a way to switch csv header on
+    ropt.autogenerate_column_names = true;
+    // ropt.column_names =
+    copt.include_columns = ropt.column_names;
 #endif
 
-  for (auto c : cols) {
-    if (c.isSystemCol) {
-      continue;  // must be processed by base interface implementation
-    }
+    for (auto c : cols) {
+      if (c.isSystemCol) {
+        continue;  // must be processed by base interface implementation
+      }
 #if ARROW_VERSION >= 14900
 #error TODO: autogenerated column names
 #endif
-    copt.column_types.emplace(c.columnName, getArrowImportType(c.columnType));
-  }
-
-  std::shared_ptr<arrow::io::ReadableFile> inp;
-  auto r = arrow::io::ReadableFile::Open(info.c_str(), &inp);  // TODO check existence
-  ARROW_THROW_NOT_OK(r);
-
-  std::shared_ptr<arrow::csv::TableReader> trp;
-  r = arrow::csv::TableReader::Make(memp, inp, ropt, popt, copt, &trp);
-  ARROW_THROW_NOT_OK(r);
-
-  std::shared_ptr<arrow::Table> arrowTable;
-  auto time = measure<>::execution([&]() { r = trp->Read(&arrowTable); });
-  ARROW_THROW_NOT_OK(r);
-  LOG(INFO) << "Arrow read " << info << " in " << time << "ms";
-
-  arrow::Table& table = *arrowTable.get();
-  int cln = 0, num_cols = table.num_columns();
-  int arr_frags = ARROW_GET_DATA(table.column(0))->num_chunks();
-  arrow::ChunkedArray* c0p = ARROW_GET_DATA(table.column(0)).get();
-
-  std::vector<std::pair<int, int>> fragments;
-  int start = 0;
-  int64_t sz = c0p->chunk(0)->length();
-  // claculate size and boundaries of fragments
-  for (int i = 1; i < arr_frags; i++) {
-    if (sz > td.fragPageSize) {
-      fragments.emplace_back(start, i);
-      start = i;
-      sz = 0;
-    }
-    sz += c0p->chunk(i)->length();
-  }
-  fragments.emplace_back(start, arr_frags);
-
-  // data comes like this - database_id, table_id, column_id, fragment_id
-  ChunkKey key{table_key.first, table_key.second, 0, 0};
-  std::array<int, 3> col_key{table_key.first, table_key.second, 0};
-
-  auto tp = arrow::internal::GetCpuThreadPool();
-  auto tg = arrow::internal::TaskGroup::MakeThreaded(tp);
-
-  std::atomic<int> counter{0};
-
-  for (auto& c : cols) {
-    if (cln >= num_cols) {
-      LOG(ERROR) << "Number of columns read from Arrow (" << num_cols
-                 << ") mismatch CREATE TABLE request: " << cols.size();
-      break;
-    }
-    if (c.isSystemCol) {
-      continue;  // must be processed by base interface implementation
+      copt.column_types.emplace(c.columnName, getArrowImportType(c.columnType));
     }
 
-    auto ctype = c.columnType.get_type();
-    col_key[2] = key[2] = c.columnId;
-    auto& col = m_columns[col_key];
-    col.resize(fragments.size());
-    auto clp = ARROW_GET_DATA(table.column(cln++)).get();
+    std::shared_ptr<arrow::io::ReadableFile> inp;
+    auto r = arrow::io::ReadableFile::Open(info.c_str(), &inp);  // TODO check existence
+    ARROW_THROW_NOT_OK(r);
 
-    auto empty = clp->null_count() == clp->length();
+    std::shared_ptr<arrow::csv::TableReader> trp;
+    r = arrow::csv::TableReader::Make(memp, inp, ropt, popt, copt, &trp);
+    ARROW_THROW_NOT_OK(r);
 
-    if (c.columnType.is_dict_encoded_string()) {
-      auto dictDesc = const_cast<DictDescriptor*>(
-          catalog->getMetadataForDict(c.columnType.get_comp_param()));
-      StringDictionary* dict = dictDesc->stringDict.get();
-      createDictionaryEncodedColumn(dict, c, col, clp, tg, fragments, key, mgr);
-    } else {
-      for (size_t f = 0; f < fragments.size(); f++) {
-        key[3] = f;
-        auto& frag = col[f];
-        frag.chunks.resize(fragments[f].second - fragments[f].first);
-        int64_t varlen = 0;
-        for (int i = fragments[f].first, e = fragments[f].second; i < e; i++) {
-          frag.chunks[i - fragments[f].first] = ARROW_GET_DATA(clp->chunk(i));
-          frag.sz += clp->chunk(i)->length();
-          auto& buffers = ARROW_GET_DATA(clp->chunk(i))->buffers;
-          if (!empty) {
-            if (ctype == kTEXT) {
-              if (buffers.size() <= 2) {
+    std::shared_ptr<arrow::Table> arrowTable;
+    auto time = measure<>::execution([&]() { r = trp->Read(&arrowTable); });
+    ARROW_THROW_NOT_OK(r);
+    std::cout << "Arrow read " << info << " in " << time << "ms";
+
+    arrow::Table& table = *arrowTable.get();
+    int cln = 0, num_cols = table.num_columns();
+    int arr_frags = ARROW_GET_DATA(table.column(0))->num_chunks();
+    arrow::ChunkedArray* c0p = ARROW_GET_DATA(table.column(0)).get();
+
+    std::vector<std::pair<int, int>> fragments;
+    int start = 0;
+    int64_t sz = c0p->chunk(0)->length();
+    // claculate size and boundaries of fragments
+    for (int i = 1; i < arr_frags; i++) {
+      if (sz > td.fragPageSize) {
+        fragments.emplace_back(start, i);
+        start = i;
+        sz = 0;
+      }
+      sz += c0p->chunk(i)->length();
+    }
+    fragments.emplace_back(start, arr_frags);
+
+    // data comes like this - database_id, table_id, column_id, fragment_id
+    ChunkKey key{table_key.first, table_key.second, 0, 0};
+    std::array<int, 3> col_key{table_key.first, table_key.second, 0};
+
+    auto tp = arrow::internal::GetCpuThreadPool();
+    auto tg = arrow::internal::TaskGroup::MakeThreaded(tp);
+
+    std::atomic<int> counter{0};
+
+    for (auto& c : cols) {
+      if (cln >= num_cols) {
+        LOG(ERROR) << "Number of columns read from Arrow (" << num_cols
+                   << ") mismatch CREATE TABLE request: " << cols.size();
+        break;
+      }
+      if (c.isSystemCol) {
+        continue;  // must be processed by base interface implementation
+      }
+
+      auto ctype = c.columnType.get_type();
+      col_key[2] = key[2] = c.columnId;
+      auto& col = m_columns[col_key];
+      col.resize(fragments.size());
+      auto clp = ARROW_GET_DATA(table.column(cln++)).get();
+
+      auto empty = clp->null_count() == clp->length();
+
+      if (c.columnType.is_dict_encoded_string()) {
+        auto dictDesc = const_cast<DictDescriptor*>(
+            catalog->getMetadataForDict(c.columnType.get_comp_param()));
+        StringDictionary* dict = dictDesc->stringDict.get();
+        createDictionaryEncodedColumn(dict, c, col, clp, tg, fragments, key, mgr);
+      } else {
+        for (size_t f = 0; f < fragments.size(); f++) {
+          key[3] = f;
+          auto& frag = col[f];
+          frag.chunks.resize(fragments[f].second - fragments[f].first);
+          int64_t varlen = 0;
+          for (int i = fragments[f].first, e = fragments[f].second; i < e; i++) {
+            frag.chunks[i - fragments[f].first] = ARROW_GET_DATA(clp->chunk(i));
+            frag.sz += clp->chunk(i)->length();
+            auto& buffers = ARROW_GET_DATA(clp->chunk(i))->buffers;
+            if (!empty) {
+              if (ctype == kTEXT) {
+                if (buffers.size() <= 2) {
+                  LOG(FATAL) << "Type of column #" << cln
+                             << " does not match between Arrow and description of "
+                             << c.columnName;
+                  throw std::runtime_error("Column ingress mismatch: " + c.columnName);
+                }
+                varlen += buffers[2]->size();
+              } else if (buffers.size() != 2) {
                 LOG(FATAL) << "Type of column #" << cln
                            << " does not match between Arrow and description of "
                            << c.columnName;
                 throw std::runtime_error("Column ingress mismatch: " + c.columnName);
               }
-              varlen += buffers[2]->size();
-            } else if (buffers.size() != 2) {
-              LOG(FATAL) << "Type of column #" << cln
-                         << " does not match between Arrow and description of "
-                         << c.columnName;
-              throw std::runtime_error("Column ingress mismatch: " + c.columnName);
             }
           }
-        }
 
-        // create buffer descriptotrs
-        if (ctype == kTEXT) {
-          auto k = key;
-          k.push_back(1);
-          {
-            auto b = mgr->createBuffer(k);
-            b->setSize(varlen);
+          // create buffer descriptotrs
+          if (ctype == kTEXT) {
+            auto k = key;
+            k.push_back(1);
+            {
+              auto b = mgr->createBuffer(k);
+              b->setSize(varlen);
+              b->encoder.reset(Encoder::Create(b, c.columnType));
+              b->has_encoder = true;
+              b->sql_type = c.columnType;
+            }
+            k[4] = 2;
+            {
+              auto b = mgr->createBuffer(k);
+              b->sql_type = SQLTypeInfo(kINT, false);
+              b->setSize(frag.sz * b->sql_type.get_size());
+            }
+          } else {
+            auto b = mgr->createBuffer(key);
+            b->sql_type = c.columnType;
+            b->setSize(frag.sz * b->sql_type.get_size());
             b->encoder.reset(Encoder::Create(b, c.columnType));
             b->has_encoder = true;
-            b->sql_type = c.columnType;
+            if (!empty) {
+              ++counter;
+              // asynchronously update stats for incoming data
+              tg->Append([b, fr = &frag, &counter]() {
+                for (auto chunk : fr->chunks) {
+                  auto len = chunk->length;
+                  auto data = chunk->buffers[1]->data();
+                  b->encoder->updateStats((const int8_t*)data, len);
+                }
+                --counter;
+                return arrow::Status::OK();
+              });
+            }
+            b->encoder->setNumElems(frag.sz);
           }
-          k[4] = 2;
-          {
-            auto b = mgr->createBuffer(k);
-            b->sql_type = SQLTypeInfo(kINT, false);
-            b->setSize(frag.sz * b->sql_type.get_size());
-          }
-        } else {
-          auto b = mgr->createBuffer(key);
-          b->sql_type = c.columnType;
-          b->setSize(frag.sz * b->sql_type.get_size());
-          b->encoder.reset(Encoder::Create(b, c.columnType));
-          b->has_encoder = true;
-          if (!empty) {
-            ++counter;
-            // asynchronously update stats for incoming data
-            tg->Append([b, fr = &frag, &counter]() {
-              for (auto chunk : fr->chunks) {
-                auto len = chunk->length;
-                auto data = chunk->buffers[1]->data();
-                b->encoder->updateStats((const int8_t*)data, len);
-              }
-              --counter;
-              return arrow::Status::OK();
-            });
-          }
-          b->encoder->setNumElems(frag.sz);
         }
       }
-    }
-  }  // each col and fragment
+    }  // each col and fragment
 
-  // wait untill all stats have been updated
-  r = tg->Finish();
-  CHECK(counter.load() == 0);
+    // wait untill all stats have been updated
+    r = tg->Finish();
+    CHECK(counter.load() == 0);
 
-  ARROW_THROW_NOT_OK(r);
-  printf("-- created: %d columns, %d chunks, %d frags\n",
-         num_cols,
-         arr_frags,
-         int(fragments.size()));
+    ARROW_THROW_NOT_OK(r);
+    printf("-- created: %d columns, %d chunks, %d frags\n",
+           num_cols,
+           arr_frags,
+           int(fragments.size()));
+  });
+  std::cout << "whole time: " << whole_import << std::endl;
 }
 
 std::string ArrowCsvForeignStorage::getType() const {

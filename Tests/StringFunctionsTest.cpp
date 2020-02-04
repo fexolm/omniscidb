@@ -331,7 +331,7 @@ TEST_F(LowerFunctionTest, SelectLowercase_ExperimentalStringFunctionsDisabled) {
 int main(int argc, char** argv) {
   TestHelpers::init_logger_stderr_only(argc, argv);
   testing::InitGoogleTest(&argc, argv);
-  QueryRunner::QueryRunner::init(BASE_PATH);
+  QueryRunner::QueryRunner::init("/localdisk/artemale/git/omniscidb/build/tmp");
   g_enable_experimental_string_functions = true;
 
   // Use system locale setting by default (as done in the server).

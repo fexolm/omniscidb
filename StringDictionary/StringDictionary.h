@@ -54,9 +54,10 @@ class StringDictionary {
   ~StringDictionary() noexcept;
 
   int32_t getOrAdd(const std::string& str) noexcept;
-  template <class T>
-  void getOrAddBulk(const std::vector<std::string>& string_vec, T* encoded_vec);
-  void getOrAddBulkArray(const std::vector<std::vector<std::string>>& string_array_vec,
+  template <class T, class String>
+  void getOrAddBulk(const std::vector<String>& string_vec, T* encoded_vec);
+  template<typename String>
+  void getOrAddBulkArray(const std::vector<std::vector<String>>& string_array_vec,
                          std::vector<std::vector<int32_t>>& ids_array_vec);
   int32_t getIdOfString(const std::string& str) const;
   std::string getString(int32_t string_id) const;
@@ -142,21 +143,22 @@ class StringDictionary {
   bool fillRateIsHigh() const noexcept;
   void increaseCapacity() noexcept;
   int32_t getOrAddImpl(const std::string& str) noexcept;
-  void hashStrings(const std::vector<std::string>& string_vec,
+  template <class String>
+  void hashStrings(const std::vector<String>& string_vec,
                    std::vector<uint32_t>& hashes) const noexcept;
-  template <class T>
-  void getOrAddBulkRemote(const std::vector<std::string>& string_vec, T* encoded_vec);
+  template <class T, class String>
+  void getOrAddBulkRemote(const std::vector<String>& string_vec, T* encoded_vec);
   int32_t getUnlocked(const std::string& str) const noexcept;
   std::string getStringUnlocked(int32_t string_id) const noexcept;
   std::string getStringChecked(const int string_id) const noexcept;
   std::pair<char*, size_t> getStringBytesChecked(const int string_id) const noexcept;
   uint32_t computeBucket(const uint32_t hash,
-                         const std::string str,
+                         const std::string_view str,
                          const std::vector<int32_t>& data,
                          const bool unique) const noexcept;
   uint32_t computeUniqueBucketWithHash(const uint32_t hash,
                                        const std::vector<int32_t>& data) const noexcept;
-  void appendToStorage(const std::string& str) noexcept;
+  void appendToStorage(std::string_view str) noexcept;
   PayloadString getStringFromStorage(const int string_id) const noexcept;
   void addPayloadCapacity() noexcept;
   void addOffsetCapacity() noexcept;
