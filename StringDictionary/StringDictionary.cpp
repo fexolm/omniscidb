@@ -31,9 +31,8 @@
 #include <future>
 #include <thread>
 
-#include <arrow/util/task-group.h>
-#include <arrow/util/thread-pool.h>
 #include "../QueryEngine/ArrowUtil.h"
+#include <tbb/task_group.h>
 
 namespace {
 const int SYSTEM_PAGE_SIZE = getpagesize();
@@ -285,11 +284,9 @@ void StringDictionary::hashStrings(const std::vector<String>& string_vec,
   const size_t items_per_thread =
       std::max<size_t>(min_target_strings_per_thread, str_count / max_thread_count + 1);
 
-  auto tp = arrow::internal::GetCpuThreadPool();
-  auto tg = arrow::internal::TaskGroup::MakeThreaded(tp);
-
+  tbb::task_group tg;
   for (size_t string_id = 0; string_id < str_count; string_id += items_per_thread) {
-    tg->Append([&string_vec, &hashes, string_id, str_count, items_per_thread]() {
+    tg.run([&string_vec, &hashes, string_id, str_count, items_per_thread]() {
       const size_t end_id = std::min(string_id + items_per_thread, str_count);
       for (size_t curr_id = string_id; curr_id < end_id; ++curr_id) {
         if (string_vec[curr_id].empty()) {
@@ -297,10 +294,9 @@ void StringDictionary::hashStrings(const std::vector<String>& string_vec,
         }
         hashes[curr_id] = rk_hash(string_vec[curr_id]);
       }
-      return arrow::Status::OK();
     });
   }
-  ARROW_THROW_NOT_OK(tg->Finish());
+  tg.wait();
 }
 
 template void StringDictionary::hashStrings(const std::vector<std::string>& string_vec,
@@ -390,7 +386,6 @@ template <class String>
 void StringDictionary::getOrAddBulkArray(
     const std::vector<std::vector<String>>& string_array_vec,
     std::vector<std::vector<int32_t>>& ids_array_vec) {
-  std::cout << "getOrAddBulkArray" << std::endl;
 
   ids_array_vec.resize(string_array_vec.size());
   for (size_t i = 0; i < string_array_vec.size(); i++) {

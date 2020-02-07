@@ -132,17 +132,10 @@ class NycTaxiTemporaryTest : public ::testing::Test {
 };
 
 class RowTest : public ::testing::Test {};
-// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery) {}
-// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery2) {}
-// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery3) {}
-// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery4) {}
-TEST_F(RowTest, StringViewTest) {
-  char text[] = "hello world";
-  int len = 11;
-  std::string_view sv(text, len);
-  std::string s(text);
-  ASSERT_EQ(sv.size(), s.size());
-}
+TEST_F(NycTaxiTemporaryTest, RunSimpleQuery) {}
+TEST_F(NycTaxiTemporaryTest, RunSimpleQuery2) {}
+TEST_F(NycTaxiTemporaryTest, RunSimpleQuery3) {}
+TEST_F(NycTaxiTemporaryTest, RunSimpleQuery4) {}
 
 }  // namespace
 
