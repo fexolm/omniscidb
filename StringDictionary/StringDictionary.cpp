@@ -31,8 +31,9 @@
 #include <future>
 #include <thread>
 
-#include "../QueryEngine/ArrowUtil.h"
+#include <tbb/parallel_for.h>
 #include <tbb/task_group.h>
+#include "../QueryEngine/ArrowUtil.h"
 
 namespace {
 const int SYSTEM_PAGE_SIZE = getpagesize();
@@ -278,25 +279,16 @@ template <class String>
 void StringDictionary::hashStrings(const std::vector<String>& string_vec,
                                    std::vector<uint32_t>& hashes) const noexcept {
   CHECK_EQ(string_vec.size(), hashes.size());
-  const size_t min_target_strings_per_thread{2000};
-  const size_t str_count = string_vec.size();
-  const size_t max_thread_count = std::thread::hardware_concurrency();
-  const size_t items_per_thread =
-      std::max<size_t>(min_target_strings_per_thread, str_count / max_thread_count + 1);
 
-  tbb::task_group tg;
-  for (size_t string_id = 0; string_id < str_count; string_id += items_per_thread) {
-    tg.run([&string_vec, &hashes, string_id, str_count, items_per_thread]() {
-      const size_t end_id = std::min(string_id + items_per_thread, str_count);
-      for (size_t curr_id = string_id; curr_id < end_id; ++curr_id) {
-        if (string_vec[curr_id].empty()) {
-          continue;
-        }
-        hashes[curr_id] = rk_hash(string_vec[curr_id]);
-      }
-    });
-  }
-  tg.wait();
+  tbb::parallel_for(tbb::blocked_range<size_t>(0, string_vec.size()),
+                    [&string_vec, &hashes](const tbb::blocked_range<size_t>& r) {
+                      for (size_t curr_id = r.begin(); curr_id != r.end(); ++curr_id) {
+                        if (string_vec[curr_id].empty()) {
+                          continue;
+                        }
+                        hashes[curr_id] = rk_hash(string_vec[curr_id]);
+                      }
+                    });
 }
 
 template void StringDictionary::hashStrings(const std::vector<std::string>& string_vec,
@@ -395,7 +387,6 @@ template <class String>
 void StringDictionary::getOrAddBulkArray(
     const std::vector<std::vector<String>>& string_array_vec,
     std::vector<std::vector<int32_t>>& ids_array_vec) {
-
   ids_array_vec.resize(string_array_vec.size());
   for (size_t i = 0; i < string_array_vec.size(); i++) {
     auto& strings = string_array_vec[i];

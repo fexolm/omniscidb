@@ -219,32 +219,32 @@ void ArrowCsvForeignStorage::createDictionaryEncodedColumn(
     auto full_time = measure<>::execution([&]() {
       auto empty = clp->null_count() == clp->length();
 
-      tbb::task_group subg;
       std::vector<std::vector<std::string_view>> bulk_array(fragments.size());
 
-      for (size_t f = 0; f < fragments.size(); f++) {
-        auto begin = fragments[f].first;
-        auto end = fragments[f].second;
-        subg.run([&bulk_array, f, begin, end, empty, clp]() {
-          size_t bulk_size = 0;
-          for (int i = begin; i < end; i++) {
-            auto stringArray =
-                std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-            bulk_size += stringArray->length();
-          }
-          bulk_array[f] = std::vector<std::string_view>(bulk_size);
-          size_t current_ind = 0;
-          for (int i = begin; i < end; i++) {
-            auto stringArray =
-                std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-            for (int i = 0; i < stringArray->length(); i++) {
-              bulk_array[f][current_ind] = stringArray->GetView(i);
-              current_ind++;
+      tbb::parallel_for(
+          tbb::blocked_range<size_t>(0, fragments.size()),
+          [&bulk_array, &fragments, empty, clp](const tbb::blocked_range<size_t>& r) {
+            for (auto f = r.begin(); f != r.end(); ++f) {
+              auto begin = fragments[f].first;
+              auto end = fragments[f].second;
+              size_t bulk_size = 0;
+              for (int i = begin; i < end; i++) {
+                auto stringArray =
+                    std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
+                bulk_size += stringArray->length();
+              }
+              bulk_array[f] = std::vector<std::string_view>(bulk_size);
+              size_t current_ind = 0;
+              for (int i = begin; i < end; i++) {
+                auto stringArray =
+                    std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
+                for (int i = 0; i < stringArray->length(); i++) {
+                  bulk_array[f][current_ind] = stringArray->GetView(i);
+                  current_ind++;
+                }
+              }
             }
-          }
-        });
-      }
-      subg.wait();
+          });
 
       auto indexes_bulk_array = std::make_shared<std::vector<std::vector<int>>>();
       auto time = measure<>::execution(
@@ -275,8 +275,8 @@ void ArrowCsvForeignStorage::createDictionaryEncodedColumn(
             auto stringArray =
                 std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
             std::shared_ptr<arrow::Buffer> indices_buf;
-            RETURN_NOT_OK(arrow::AllocateBuffer(stringArray->length() * sizeof(int32_t),
-                                                &indices_buf));
+            ARROW_THROW_NOT_OK(arrow::AllocateBuffer(
+                stringArray->length() * sizeof(int32_t), &indices_buf));
 
             auto raw_data = reinterpret_cast<int*>(indices_buf->mutable_data());
 
@@ -299,7 +299,6 @@ void ArrowCsvForeignStorage::createDictionaryEncodedColumn(
 
           b->setSize(frag.sz * b->sql_type.get_size());
           b->encoder->setNumElems(frag.sz);
-          return arrow::Status::OK();
         });
       }
 
@@ -322,7 +321,6 @@ void ArrowCsvForeignStorage::createDictionaryEncodedColumn(
       }
     });
     std::cout << "full time: " << full_time << "ms" << std::endl;
-    return arrow::Status::OK();
   });
 }
 
@@ -375,7 +373,6 @@ void ArrowCsvForeignStorage::registerTable(Catalog_Namespace::Catalog* catalog,
     auto time = measure<>::execution([&]() { r = trp->Read(&arrowTable); });
     ARROW_THROW_NOT_OK(r);
     std::cout << "Arrow read " << info << " in " << time << "ms";
-    arrow::internal::GetCpuThreadPool()->Shutdown();
 
     arrow::Table& table = *arrowTable.get();
     int cln = 0, num_cols = table.num_columns();

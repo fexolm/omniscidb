@@ -132,9 +132,9 @@ class NycTaxiTemporaryTest : public ::testing::Test {
 };
 
 TEST_F(NycTaxiTemporaryTest, RunSimpleQuery) {}
-TEST_F(NycTaxiTemporaryTest, RunSimpleQuery2) {}
-TEST_F(NycTaxiTemporaryTest, RunSimpleQuery3) {}
-TEST_F(NycTaxiTemporaryTest, RunSimpleQuery4) {}
+// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery2) {}
+// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery3) {}
+// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery4) {}
 
 }  // namespace
 
