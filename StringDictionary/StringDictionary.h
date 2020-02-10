@@ -49,7 +49,7 @@ class StringDictionary {
                    const bool isTemp,
                    const bool recover,
                    const bool materializeHashes = false,
-                   size_t initial_capacity = 256);
+                   size_t initial_capacity = 33554432);
   StringDictionary(const LeafHostInfo& host, const DictRef dict_ref);
   ~StringDictionary() noexcept;
 
