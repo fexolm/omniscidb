@@ -119,7 +119,11 @@ void ArrowCsvForeignStorage::read(const ChunkKey& chunk_key,
           varlen_offset += data[(sz / sizeof(uint32_t)) - 1];
         }
       } else {
-        std::memcpy(dest, bp->data(), sz = bp->size());
+        auto fixed_type = dynamic_cast<arrow::FixedWidthType*>(array_data->type.get());
+        CHECK(fixed_type);
+        std::memcpy(dest,
+                    bp->data() + array_data->offset * (fixed_type->bit_width() / 8),
+                    sz = array_data->length * (fixed_type->bit_width() / 8));
       }
     } else {
       // TODO: nullify?

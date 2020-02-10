@@ -132,10 +132,14 @@ class NycTaxiTemporaryTest : public ::testing::Test {
 };
 
 class RowTest : public ::testing::Test {};
-TEST_F(NycTaxiTemporaryTest, RunSimpleQuery) {}
-// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery2) {}
-// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery3) {}
-// TEST_F(NycTaxiTemporaryTest, RunSimpleQuery4) {}
+TEST_F(NycTaxiTemporaryTest, RunSimpleQuery2) {}
+TEST_F(NycTaxiTemporaryTest, RunSimpleQuery3) {}
+TEST_F(NycTaxiTemporaryTest, RunSimpleQuery4) {}
+TEST_F(NycTaxiTemporaryTest, RunSimpleQuery) {
+  // TODO: expect +1 rows when move to arrow 0.15 as current arrow doesn't support
+  // headerless csv
+  run_simple_agg("SELECT count(vendor_id) FROM trips where vendor_id < '5'");
+}
 
 }  // namespace
 
