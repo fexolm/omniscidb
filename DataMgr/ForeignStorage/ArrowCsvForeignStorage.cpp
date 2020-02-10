@@ -16,6 +16,7 @@
 
 #include <array>
 #include <future>
+#include <utility>
 
 #include <tbb/parallel_for.h>
 #include <tbb/task_group.h>
@@ -219,49 +220,53 @@ void ArrowCsvForeignStorage::createDictionaryEncodedColumn(
     auto full_time = measure<>::execution([&]() {
       auto empty = clp->null_count() == clp->length();
 
-      std::vector<std::vector<std::string_view>> bulk_array(fragments.size());
+      // calculate offsets for every fragment in bulk
+      size_t bulk_size = 0;
+      std::vector<int> offsets(fragments.size() + 1);
+      for (size_t f = 0; f < fragments.size(); f++) {
+        offsets[f] = bulk_size;
+        for (int i = fragments[f].first; i < fragments[f].second; i++) {
+          auto stringArray = std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
+          bulk_size += stringArray->length();
+        }
+      }
+      offsets[fragments.size()] = bulk_size;
+      std::vector<std::string_view> bulk(bulk_size);
 
       tbb::parallel_for(
           tbb::blocked_range<size_t>(0, fragments.size()),
-          [&bulk_array, &fragments, empty, clp](const tbb::blocked_range<size_t>& r) {
+          [&bulk, &fragments, empty, clp, &offsets](const tbb::blocked_range<size_t>& r) {
             for (auto f = r.begin(); f != r.end(); ++f) {
               auto begin = fragments[f].first;
               auto end = fragments[f].second;
-              size_t bulk_size = 0;
-              for (int i = begin; i < end; i++) {
-                auto stringArray =
-                    std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-                bulk_size += stringArray->length();
-              }
-              bulk_array[f] = std::vector<std::string_view>(bulk_size);
+              auto offset = offsets[f];
+
               size_t current_ind = 0;
               for (int i = begin; i < end; i++) {
                 auto stringArray =
                     std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
                 for (int i = 0; i < stringArray->length(); i++) {
-                  bulk_array[f][current_ind] = stringArray->GetView(i);
+                  bulk[offset + current_ind] = stringArray->GetView(i);
                   current_ind++;
                 }
               }
             }
           });
 
-      auto indexes_bulk_array = std::make_shared<std::vector<std::vector<int>>>();
-      auto time = measure<>::execution(
-          [&]() { dict->getOrAddBulkArray(bulk_array, *indexes_bulk_array); });
+      std::shared_ptr<arrow::Buffer> indices_buf;
+      ARROW_THROW_NOT_OK(
+          arrow::AllocateBuffer(bulk_size * sizeof(int32_t), &indices_buf));
+      auto raw_data = reinterpret_cast<int*>(indices_buf->mutable_data());
+      auto time = measure<>::execution([&]() { dict->getOrAddBulk(bulk, raw_data); });
 
-      int strings_count = 0;
-      for (int i = 0; i < indexes_bulk_array->size(); i++) {
-        strings_count += (*indexes_bulk_array)[i].size();
-      }
-
-      std::cout << "bulk insert time: " << time << "ms, strings count: " << strings_count
+      std::cout << "bulk insert time: " << time << "ms, strings count: " << bulk_size
                 << ", unique_count: " << dict->storageEntryCount() << std::endl;
 
       for (size_t f = 0; f < fragments.size(); f++) {
         auto begin = fragments[f].first;
         auto end = fragments[f].second;
-        tg.run([k = key, f, &col, begin, end, mgr, &c, clp, indexes_bulk_array]() {
+        auto offset = offsets[f];
+        tg.run([k = key, f, &col, begin, end, mgr, &c, clp, offset, indices_buf]() {
           auto key = k;
           key[3] = f;
           auto& frag = col[f];
@@ -274,50 +279,20 @@ void ArrowCsvForeignStorage::createDictionaryEncodedColumn(
           for (int i = begin; i < end; i++) {
             auto stringArray =
                 std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-            std::shared_ptr<arrow::Buffer> indices_buf;
-            ARROW_THROW_NOT_OK(arrow::AllocateBuffer(
-                stringArray->length() * sizeof(int32_t), &indices_buf));
-
-            auto raw_data = reinterpret_cast<int*>(indices_buf->mutable_data());
-
-            std::copy(
-                (*indexes_bulk_array)[f].begin() + current_ind,
-                (*indexes_bulk_array)[f].begin() + current_ind + stringArray->length(),
-                raw_data);
-
-            auto indexArray =
-                std::make_shared<arrow::Int32Array>(stringArray->length(), indices_buf);
-
+            auto indexArray = std::make_shared<arrow::Int32Array>(
+                stringArray->length(), indices_buf, nullptr, -1, offset + current_ind);
             frag.chunks[i - begin] = ARROW_GET_DATA(indexArray);
             frag.sz += stringArray->length();
             current_ind += stringArray->length();
 
             auto len = frag.chunks[i - begin]->length;
-            auto data = frag.chunks[i - begin]->buffers[1]->data();
+            auto data = frag.chunks[i - begin]->GetValues<int32_t>(1);
             b->encoder->updateStats((const int8_t*)data, len);
           }
 
           b->setSize(frag.sz * b->sql_type.get_size());
           b->encoder->setNumElems(frag.sz);
         });
-      }
-
-      for (size_t f = 0; f < fragments.size(); f++) {
-        auto begin = fragments[f].first;
-        auto end = fragments[f].second;
-        for (int i = begin; i < end; i++) {
-          auto stringArray = std::static_pointer_cast<arrow::StringArray>(clp->chunk(i));
-          std::vector<std::string> strings(stringArray->length());
-          for (int i = 0; i < stringArray->length(); i++) {
-            if (stringArray->IsNull(i) || empty ||
-                stringArray->null_count() == stringArray->length()) {
-              strings[i] = "";
-            } else {
-              strings[i] = stringArray->GetString(i);
-            }
-          }
-          CHECK(dict);
-        }
       }
     });
     std::cout << "full time: " << full_time << "ms" << std::endl;
