@@ -10,8 +10,7 @@ namespace OmnisciDbEngine {
     public:
 
 		void Reset();
-		void ExecuteDDL(std::string sQuery);
-		void ExecuteDML(std::string sQuery);
+		void Execute(std::string sQuery, int isDDL);
 		static DBEngine* Create(std::string sPath);
 
     protected:
