@@ -14,10 +14,13 @@ else()
 endif()
 
 add_library(QueryState QueryState.cpp)
+target_compile_options(QueryState PRIVATE -fPIC)
 
 add_library(token_completion_hints TokenCompletionHints.cpp)
+target_compile_options(token_completion_hints PRIVATE -fPIC)
 target_link_libraries(token_completion_hints mapd_thrift)
 
 add_library(thrift_handler ${THRIFT_HANDLER_SOURCES})
+target_compile_options(thrift_handler PRIVATE -fPIC)
 add_dependencies(thrift_handler Parser)
 target_link_libraries(thrift_handler token_completion_hints QueryState ${THRIFT_HANDLER_LIBS})

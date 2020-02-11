@@ -13,3 +13,5 @@ set(bcrypt_hdr
 )
 
 add_library(bcrypt ${bcrypt_src} ${bcrypt_hdr})
+target_compile_options(bcrypt PRIVATE -fPIC)
+

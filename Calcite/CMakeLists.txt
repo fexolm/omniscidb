@@ -20,7 +20,7 @@ add_library(calciteserver_thrift
     ${CMAKE_CURRENT_BINARY_DIR}/gen-cpp/extension_functions_constants.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/gen-cpp/extension_functions_types.cpp
 )
-
+target_compile_options(calciteserver_thrift PRIVATE -fPIC)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 get_target_property(StringDictionary_BINARY_DIR StringDictionary BINARY_DIR)
@@ -30,5 +30,5 @@ ${StringDictionary_BINARY_DIR}/gen-cpp)
 target_link_libraries(calciteserver_thrift ${Thrift_LIBRARIES})
 
 add_library(Calcite Calcite.cpp Calcite.h ${CMAKE_SOURCE_DIR}/Shared/ConfigResolve.h )
-
+target_compile_options(Calcite PRIVATE -fPIC)
 target_link_libraries(Calcite Catalog calciteserver_thrift ${JAVA_JVM_LIBRARY})

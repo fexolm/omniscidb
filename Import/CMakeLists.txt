@@ -9,8 +9,10 @@ if(ENABLE_IMPORT_PARQUET)
 endif()
 
 add_library(CsvImport Importer.cpp Importer.h ${S3Archive})
+target_compile_options(CsvImport PRIVATE -fPIC)
 
 add_library(DelimitedParserUtils DelimitedParserUtils.cpp DelimitedParserUtils.h)
+target_compile_options(DelimitedParserUtils PRIVATE -fPIC)
 
 target_link_libraries(CsvImport DelimitedParserUtils mapd_thrift Shared Catalog Chunk DataMgr StringDictionary ${GDAL_LIBRARIES} ${CMAKE_DL_LIBS}
  ${LibArchive_LIBRARIES} ${IMPORT_LIBRARIES} ${Arrow_LIBRARIES})
@@ -22,6 +24,7 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/ThirdParty/geo_samples DESTINATION "ThirdP
 add_custom_target(geo_samples ALL COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/ThirdParty/geo_samples" "${CMAKE_BINARY_DIR}/ThirdParty/geo_samples")
 
 add_library(RowToColumn RowToColumnLoader.cpp RowToColumnLoader.h)
+target_compile_options(RowToColumn PRIVATE -fPIC)
 target_link_libraries(RowToColumn ThriftClient DelimitedParserUtils)
 
 add_executable(StreamImporter StreamImporter.cpp)

@@ -5,4 +5,5 @@ else()
 endif()
 
 add_library(sqlite3 sqlite3.c sqlite3.h)
+target_compile_options(sqlite3 PRIVATE -fPIC)
 target_link_libraries(sqlite3 ${CMAKE_DL_LIBS})

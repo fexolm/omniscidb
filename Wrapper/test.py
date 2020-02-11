@@ -2,8 +2,7 @@ import dbe
 import ctypes
 import inspect
 
-// TODO: should work not only on my PC
-ctypes._dlopen('/localdisk/artemale/git/omniscidb/build/Wrapper/libDBEngine.so', ctypes.RTLD_GLOBAL)
+ctypes._dlopen('/localdisk/gal/wrap/omniscidb/build_cl/Wrapper/libDBEngine.so', ctypes.RTLD_GLOBAL)
 
 dbe.init()
 

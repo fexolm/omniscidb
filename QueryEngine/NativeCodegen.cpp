@@ -921,7 +921,7 @@ bool CodeGenerator::alwaysCloneRuntimeFunction(const llvm::Function* func) {
 
 llvm::Module* read_template_module(llvm::LLVMContext& context) {
   llvm::SMDiagnostic err;
-
+std::cout << "Path to QueryEngine runtime functions: " << mapd_root_abs_path() << std::endl;
   auto buffer_or_error = llvm::MemoryBuffer::getFile(mapd_root_abs_path() +
                                                      "/QueryEngine/RuntimeFunctions.bc");
   CHECK(!buffer_or_error.getError());

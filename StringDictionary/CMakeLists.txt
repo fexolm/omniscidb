@@ -1,5 +1,5 @@
 add_library(StringDictionary StringDictionary.cpp StringDictionaryProxy.cpp)
-
+target_compile_options(StringDictionary PRIVATE -fPIC)
 if(ENABLE_FOLLY)
   target_link_libraries(StringDictionary Utils ${Boost_LIBRARIES} ${Thrift_LIBRARIES} ${PROFILER_LIBS} ThriftClient ${Folly_LIBRARIES})
 else()

@@ -6,5 +6,5 @@ set(analyzer_source_files
 )
 
 add_library(Analyzer ${analyzer_source_files})
-
+target_compile_options(Analyzer PRIVATE -fPIC)
 target_link_libraries(Analyzer Catalog)

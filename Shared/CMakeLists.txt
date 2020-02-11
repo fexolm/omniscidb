@@ -13,9 +13,11 @@ set(shared_source_files
 )
 
 add_library(Shared ${shared_source_files})
+target_compile_options(Shared PRIVATE -fPIC)
 target_link_libraries(Shared ${Boost_LIBRARIES} ${GDAL_LIBRARIES})
 
 # Required by ThriftClient.cpp
 add_definitions("-DTHRIFT_PACKAGE_VERSION=\"${Thrift_VERSION}\"")
 add_library(ThriftClient ThriftClient.cpp)
+target_compile_options(ThriftClient PRIVATE -fPIC)
 target_link_libraries(ThriftClient  ${Thrift_LIBRARIES} ${Boost_LIBRARIES})

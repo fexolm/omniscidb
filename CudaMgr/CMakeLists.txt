@@ -3,5 +3,5 @@ if(ENABLE_CUDA)
 else()
     add_library(CudaMgr CudaMgrNoCuda.cpp)
 endif()
-
+target_compile_options(CudaMgr PRIVATE -fPIC)
 target_link_libraries(CudaMgr ${CUDA_LIBRARIES})

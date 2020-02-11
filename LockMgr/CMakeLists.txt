@@ -3,6 +3,6 @@ set(lock_mgr_source_files
 )
 
 add_library(LockMgr ${lock_mgr_source_files})
-
+target_compile_options(LockMgr PRIVATE -fPIC)
 target_link_libraries(LockMgr Shared ${Boost_THREAD_LIBRARY} ${Glog_LIBRARIES})
 

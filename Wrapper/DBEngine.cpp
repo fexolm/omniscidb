@@ -4,7 +4,7 @@
 #include "../DataMgr/ForeignStorage/ForeignStorageInterface.h"
 
 
-#define BASE_PATH "/localdisk/artemale/git/omniscidb/build/tmp"
+#define BASE_PATH "/localdisk/gal/wrap/omniscidb/build_cl/tmp"
 
 using QR = QueryRunner::QueryRunner;
 

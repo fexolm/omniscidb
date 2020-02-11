@@ -215,6 +215,8 @@ else()
   add_library(QueryEngine ${query_engine_source_files})
 endif()
 
+target_compile_options(QueryEngine PRIVATE -fPIC)
+
 set(ARROW_LIBS ${Arrow_LIBRARIES})
 
 target_link_libraries(QueryEngine Planner StringDictionary Utils ${ARROW_LIBS}
@@ -398,5 +400,5 @@ add_custom_command(
         -c ${CMAKE_CURRENT_SOURCE_DIR}/Rendering/ee/ThrustTransform.cu
     )
 
-add_executable(group_by_hash_test ${group_by_hash_test_files})
-target_link_libraries(group_by_hash_test gtest Shared ${Boost_LIBRARIES} ${PROFILER_LIBS})
+#add_executable(group_by_hash_test ${group_by_hash_test_files})
+#target_link_libraries(group_by_hash_test gtest Shared ${Boost_LIBRARIES} ${PROFILER_LIBS})

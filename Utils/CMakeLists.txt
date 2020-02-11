@@ -6,4 +6,5 @@ set(utils_source_files
 )
 
 add_library(Utils ${utils_source_files})
+target_compile_options(Utils PRIVATE -fPIC)
 target_link_libraries(Utils ${Boost_LIBRARIES})
