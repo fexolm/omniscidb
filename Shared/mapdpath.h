@@ -44,7 +44,7 @@ inline std::string mapd_root_abs_path() {
 #else
   const auto mapd_root = abs_exe_dir.parent_path();
 #endif
-  return mapd_root;
+  return mapd_root.string();
 }
 
 #endif  // _MAPDPATH_H
