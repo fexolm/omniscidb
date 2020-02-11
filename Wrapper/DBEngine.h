@@ -4,13 +4,16 @@
 #define __DB_ENGINE_H
 
 #include<string>
+#include<memory>
+#include "QueryEngine/ResultSet.h"
 
 namespace OmnisciDbEngine {
     class DBEngine {
     public:
 
 		void Reset();
-		void Execute(std::string sQuery, int isDDL);
+		void ExecuteDDL(std::string sQuery);
+		std::shared_ptr<ResultSet> ExecuteDML(std::string sQuery);
 		static DBEngine* Create(std::string sPath);
 
     protected:

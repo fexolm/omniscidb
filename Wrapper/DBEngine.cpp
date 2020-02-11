@@ -37,22 +37,45 @@ namespace OmnisciDbEngine {
 
 		void ExecuteDDL(const std::string& sQuery)
 		{
-			std::cout << "START EXECUTE : " << sQuery << std::endl;
+			std::cout << "START EXECUTE DDL: " << sQuery << std::endl;
 			if (m_pQueryRunner != nullptr) {
 				m_pQueryRunner->runDDLStatement(sQuery);
 			}
-			std::cout << "END EXECUTE" << std::endl;
+			std::cout << "END EXECUTE DDL" << std::endl;
 		}
 
-		void ExecuteDML(const std::string& sQuery)
+		template <class T>
+		T v(const TargetValue& r) {
+		  auto scalar_r = boost::get<ScalarTargetValue>(&r);
+		  CHECK(scalar_r);
+		  auto p = boost::get<T>(scalar_r);
+		  CHECK(p);
+		  return *p;
+		}
+
+		std::shared_ptr<ResultSet> ExecuteDML(const std::string& sQuery)
 		{
-			std::cout << "START SELECT : " << sQuery << std::endl;
+			std::cout << "START EXECUTE DML: " << sQuery << std::endl;
 			if (m_pQueryRunner != nullptr) {
-				m_pQueryRunner->runSQL(sQuery, ExecutorDeviceType::CPU);
+				auto rs = m_pQueryRunner->runSQL(sQuery, ExecutorDeviceType::CPU);
+				int it = 0;
+				while(true) {
+				    const auto row = rs->getNextRow(true, false); //std::vector<TargetValue>
+				    if (row.empty())
+					break;
+				    std::cout << "row " << ++it << ": " << row.size() << " columns" << std::endl; 
+				    int itc = 0;
+				    for (const TargetValue& col : row) {
+				        const auto vval = boost::get<ScalarTargetValue>(&col);
+					const auto val = boost::get<int64_t>(vval);
+					//int val = v<int>(col);
+					std::cout << "    col " << ++itc << ": " << val << std::endl; 
+				    }
+				}
+				return rs; //m_pQueryRunner->runSQL(sQuery, ExecutorDeviceType::CPU);
 			}
-			std::cout << "END SELECT" << std::endl;
+			std::cout << "Query Runner is NULL" << std::endl;
 		}
-
 
 		DBEngineImpl(const std::string& sBasePath) 
 		: m_sBasePath(sBasePath)
@@ -115,13 +138,13 @@ namespace OmnisciDbEngine {
 	//pEngine->Reset();
     }
 
-    void DBEngine::Execute(std::string sQuery, int isDDL) {
+    void DBEngine::ExecuteDDL(std::string sQuery) {
 	DBEngineImpl* pEngine = GetImpl(this);
-	if (isDDL) {
-    	    pEngine->ExecuteDDL(sQuery);
-	}
-	else {
-    	    pEngine->ExecuteDML(sQuery);
-	}
+        pEngine->ExecuteDDL(sQuery);
+    }
+
+    std::shared_ptr<ResultSet> DBEngine::ExecuteDML(std::string sQuery) {
+	DBEngineImpl* pEngine = GetImpl(this);
+        return pEngine->ExecuteDML(sQuery);
     }
 }

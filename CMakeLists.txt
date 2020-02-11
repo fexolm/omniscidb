@@ -534,7 +534,7 @@ endif()
 
 set(initdb_source_files initdb.cpp)
 add_executable(initdb ${initdb_source_files})
-
+target_compile_options(initdb PRIVATE -fPIC)
 set(omnisci_server_source_files MapDServer.cpp ${CMAKE_BINARY_DIR}/MapDRelease.h ${CMAKE_SOURCE_DIR}/Shared/ConfigResolve.h)
 
 add_executable(omnisci_server ${omnisci_server_source_files})

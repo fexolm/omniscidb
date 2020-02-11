@@ -34,6 +34,7 @@
 #include <list>
 #include <memory>
 #include <vector>
+#include <optional>
 
 enum class SortAlgorithm { Default, SpeculativeTopN, StreamingTopN };
 

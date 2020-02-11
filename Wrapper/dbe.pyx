@@ -23,8 +23,14 @@ cdef class PyDbEngine:
         self.c_dbe.Reset()
         del self.c_dbe
 
-    def execute(self, query, isDDL):
+    def executeDDL(self, query):
         try:
-            self.c_dbe.Execute(query, isDDL)
+            self.c_dbe.ExecuteDDL(query)
+        except Exception, e:
+            os.abort()
+
+    def executeDML(self, query):
+        try:
+            self.c_dbe.ExecuteDML(query)
         except Exception, e:
             os.abort()

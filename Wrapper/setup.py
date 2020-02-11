@@ -5,7 +5,9 @@ from Cython.Distutils import build_ext
 ext_modules = [Extension("dbe",
                      ["dbe.pyx"],
                      language='c++',
-                     library_dirs=['./', '/usr/local/mapd-deps/lib'],
+                     extra_compile_args=["-std=c++17"],
+                     include_dirs=['/localdisk/gal/root/igalink/omniscidb'],
+                     library_dirs=['./', '/usr/local/mapd-deps/lib', '/localdisk/gal/root/igalink/omniscidb/build/Wrapper'],
                      libraries=['DBEngine'],
                      )]
 
