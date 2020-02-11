@@ -1,30 +1,127 @@
+// DbEngine.cpp
+
 #include "DBEngine.h"
-#include "../QueryRunner/QueryRunner.h"
-#include "../DataMgr/ForeignStorage/ArrowCsvForeignStorage.h"
-#include "../DataMgr/ForeignStorage/ForeignStorageInterface.h"
+#include <thrift/Thrift.h>
+#include "Catalog/Catalog.h"
+#include "QueryRunner/QueryRunner.h"
+#include "QueryEngine/CompilationOptions.h"
+#include "Import/Importer.h"
+#include "Shared/Logger.h"
+#include "Shared/mapdpath.h"
+#include <array>
+#include <boost/filesystem.hpp>
+#include <exception>
+#include <iostream>
+#include <memory>
+#include <string>
+
+#define CALCITEPORT 3279
+
+//bool g_enable_thrift_logs{ false };
+
+namespace OmnisciDbEngine {
+//////////////////////////////////////////////////////////////////////////// DBEngineImp
+	class DBEngineImpl : public DBEngine {
+	public:
+		const std::string OMNISCI_DEFAULT_DB = "omnisci";
+		const std::string OMNISCI_ROOT_USER = "admin";
+		const std::string OMNISCI_DATA_PATH = "//mapd_data";
+		//const int CALCITEPORT = 3279;
+
+		void Reset()
+		{
+			std::cout << "DESTRUCTOR DBEngineImpl" << std::endl;
+			if (m_pQueryRunner)
+				m_pQueryRunner->reset();
+		}
+
+		void ExecuteDDL(const std::string& sQuery)
+		{
+			std::cout << "START EXECUTE : " << sQuery << std::endl;
+			if (m_pQueryRunner != nullptr) {
+				m_pQueryRunner->runDDLStatement(sQuery);
+			}
+			std::cout << "END EXECUTE" << std::endl;
+		}
+
+		void ExecuteDML(const std::string& sQuery)
+		{
+			std::cout << "START SELECT : " << sQuery << std::endl;
+			if (m_pQueryRunner != nullptr) {
+				m_pQueryRunner->runSQL(sQuery, ExecutorDeviceType::CPU);
+			}
+			std::cout << "END SELECT" << std::endl;
+		}
 
 
-#define BASE_PATH "/localdisk/gal/wrap/omniscidb/build_cl/tmp"
+		DBEngineImpl(const std::string& sBasePath) 
+		: m_sBasePath(sBasePath)
+		, m_pQueryRunner(nullptr)
+		{
+			std::cout << "CONSTRUCTOR DBEngineImpl begin: " << sBasePath << std::endl;
+			//if (!g_enable_thrift_logs) {
+			    apache::thrift::GlobalOutput.setOutputFunction([](const char* msg) {});
+			//}
 
-using QR = QueryRunner::QueryRunner;
+			if (!boost::filesystem::exists(m_sBasePath)) {
+			    std::cerr << "Catalog basepath " + m_sBasePath + " does not exist.\n";
+			}
+			else {
+				MapDParameters mapdParms;
+				std::string sDataPath = m_sBasePath + OMNISCI_DATA_PATH;
+				std::cout << "CONSTRUCTOR DBEngineImpl data path = " << sDataPath << std::endl;
+				m_DataMgr = std::make_shared<Data_Namespace::DataMgr>(sDataPath, mapdParms, false, 0);
+				std::cout << "CONSTRUCTOR DBEngineImpl data manager created" << std::endl;
+				auto calcite = std::make_shared<Calcite>(-1, CALCITEPORT, m_sBasePath, 1024);
+				std::cout << "CONSTRUCTOR DBEngineImpl calcite created" << std::endl;
+				auto& sys_cat = Catalog_Namespace::SysCatalog::instance();
+				sys_cat.init(m_sBasePath, m_DataMgr, {}, calcite, false, false, {});
+				if (!sys_cat.getSqliteConnector()) {
+					std::cerr << "SqliteConnector is null " << std::endl;
+				}
+				else {
+					std::cout << "CONSTRUCTOR DBEngineImpl system catalog created" << std::endl;
+					sys_cat.getMetadataForDB(OMNISCI_DEFAULT_DB, m_Database); //TODO: Check
+					std::cout << "CONSTRUCTOR DBEngineImpl DB metadata created" << std::endl;
+					auto catalog = Catalog_Namespace::Catalog::get(m_sBasePath, m_Database, m_DataMgr, std::vector<LeafHostInfo>(), calcite, false);
+					std::cout << "CONSTRUCTOR DBEngineImpl catalog created" << std::endl;
+					sys_cat.getMetadataForUser(OMNISCI_ROOT_USER, m_User);
+					std::cout << "CONSTRUCTOR DBEngineImpl user metadata got" << std::endl;
+					auto session = std::make_unique<Catalog_Namespace::SessionInfo>(catalog, m_User, ExecutorDeviceType::CPU, "");
+					m_pQueryRunner = QueryRunner::QueryRunner::init(session);
+					std::cout << "CONSTRUCTOR DBEngineImpl query runner created" << std::endl;
+				}
+			}
+		} 
 
-namespace Wrapper {
+    private:
+		std::string m_sBasePath;
+		std::shared_ptr<Data_Namespace::DataMgr> m_DataMgr;
+		Catalog_Namespace::DBMetadata m_Database;
+		Catalog_Namespace::UserMetadata m_User;
+		QueryRunner::QueryRunner* m_pQueryRunner;
+    };
 
-void run_ddl_statement(std::string input_str) {
-  QR::get()->runDDLStatement(input_str);
+    DBEngine* DBEngine::Create(std::string sPath) {
+	return new DBEngineImpl(sPath);
+    }
+
+    // downcasting methods
+    inline DBEngineImpl * GetImpl(DBEngine* ptr) { return (DBEngineImpl *)ptr; }
+    inline const DBEngineImpl * GetImpl(const DBEngine* ptr) { return (const DBEngineImpl *)ptr; }
+
+    void DBEngine::Reset() {
+	DBEngineImpl* pEngine = GetImpl(this);
+	//pEngine->Reset();
+    }
+
+    void DBEngine::Execute(std::string sQuery, int isDDL) {
+	DBEngineImpl* pEngine = GetImpl(this);
+	if (isDDL) {
+    	    pEngine->ExecuteDDL(sQuery);
+	}
+	else {
+    	    pEngine->ExecuteDML(sQuery);
+	}
+    }
 }
-
-void init() {
-  QR::init(BASE_PATH);
-  registerArrowCsvForeignStorage();
-}
-
-void destroy() {
-  ForeignStorageInterface::destroy();
-  QR::reset();
-}
-
-void run_simple_agg(std::string query_str) {
-  auto rows = QR::get()->runSQL(query_str, ExecutorDeviceType::CPU, false);
-}
-}  // namespace Wrapper

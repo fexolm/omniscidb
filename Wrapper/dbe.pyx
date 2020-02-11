@@ -2,17 +2,29 @@ from cython.operator cimport dereference as deref
 
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
+#from libcpp cimport bool
+import os
 
-cimport Wrapper
+# Create a Cython extension type which holds a C++ instance
+# as an attribute and create a bunch of forwarding methods
+# Python extension type.
+from DBEngine cimport DBEngine
 
-def init():
-    Wrapper.init()
+#def pyExecute(query):
+#    return Execute(query)
 
-def destroy():
-    Wrapper.destroy()
+cdef class PyDbEngine:
+    cdef DBEngine* c_dbe  #Hold a C++ instance which we're wrapping
 
-def run_ddl_statement(query):
-    Wrapper.run_ddl_statement(query)
+    def __cinit__(self, path):
+        self.c_dbe = DBEngine.Create(path)
 
-def run_simple_agg(query):
-    Wrapper.run_simple_agg(query)
+    def __dealloc__(self):
+        self.c_dbe.Reset()
+        del self.c_dbe
+
+    def execute(self, query, isDDL):
+        try:
+            self.c_dbe.Execute(query, isDDL)
+        except Exception, e:
+            os.abort()

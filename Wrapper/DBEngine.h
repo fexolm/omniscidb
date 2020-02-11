@@ -1,13 +1,23 @@
-#include <string>
+// DbEngine.h
 
-namespace Wrapper {
+#ifndef __DB_ENGINE_H
+#define __DB_ENGINE_H
 
-void run_ddl_statement(std::string input_str);
+#include<string>
 
-void init();
+namespace OmnisciDbEngine {
+    class DBEngine {
+    public:
 
-void destroy();
+		void Reset();
+		void ExecuteDDL(std::string sQuery);
+		void ExecuteDML(std::string sQuery);
+		static DBEngine* Create(std::string sPath);
 
-void run_simple_agg(std::string query_str);
+    protected:
 
-}  // namespace Wrapper
+		DBEngine() {}
+    };
+}
+
+#endif // __DB_ENGINE_H

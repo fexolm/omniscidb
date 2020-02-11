@@ -44,8 +44,7 @@ inline std::string mapd_root_abs_path() {
 #else
   const auto mapd_root = abs_exe_dir.parent_path();
 #endif
-  // TODO: should work not only on my PC
-  return "/localdisk/gal/wrap/omniscidb/build_cl"; //"/localdisk/artemale/git/omniscidb/build";
+  return mapd_root;
 }
 
 #endif  // _MAPDPATH_H
