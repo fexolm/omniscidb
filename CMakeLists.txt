@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.2)
 set(CMAKE_CXX_FLAGS "-fPIC ")
 set(CMAKE_C_FLAGS "-fPIC ")
 
-set(CMAKE_SHARED_LINKER_FLAGS " --no-undefined")
+#set(CMAKE_SHARED_LINKER_FLAGS " --no-undefined")
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)

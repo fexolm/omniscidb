@@ -7,7 +7,7 @@ ext_modules = [Extension("dbe",
                      language='c++',
                      extra_compile_args=["-std=c++17"],
                      include_dirs=['/localdisk/gal/root/igalink/omniscidb'],
-                     library_dirs=['./', '/usr/local/mapd-deps/lib', '/localdisk/gal/root/igalink/omniscidb/build/Wrapper'],
+                     library_dirs=['./', '/usr/local/mapd-deps/lib', '../build/Wrapper'],
                      libraries=['DBEngine'],
                      )]
 
