@@ -5,7 +5,8 @@
 #include <cmath>
 #include <cstdlib>
 
-#define EXTENSION_INLINE extern "C" ALWAYS_INLINE DEVICE
+#define EXTENSION_INLINE 
+//extern "C" ALWAYS_INLINE DEVICE
 #define EXTENSION_NOINLINE extern "C" NEVER_INLINE DEVICE
 
 /* Example extension functions:
