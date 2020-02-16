@@ -29,6 +29,7 @@
 #include <future>
 #include <map>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -56,7 +57,7 @@ class StringDictionary {
   int32_t getOrAdd(const std::string& str) noexcept;
   template <class T, class String>
   void getOrAddBulk(const std::vector<String>& string_vec, T* encoded_vec);
-  template<typename String>
+  template <class String>
   void getOrAddBulkArray(const std::vector<std::vector<String>>& string_array_vec,
                          std::vector<std::vector<int32_t>>& ids_array_vec);
   int32_t getIdOfString(const std::string& str) const;
@@ -140,8 +141,14 @@ class StringDictionary {
   void processDictionaryFutures(
       std::vector<std::future<std::vector<std::pair<uint32_t, unsigned int>>>>&
           dictionary_futures);
-  bool fillRateIsHigh() const noexcept;
+  bool fillRateIsHigh(const size_t num_strings) const noexcept;
   void increaseCapacity() noexcept;
+  template <class String>
+  void increaseCapacityFromStorageAndMemory(
+      const size_t storage_high_water_mark,
+      const std::vector<String>& input_strings,
+      const std::vector<size_t>& string_memory_ids,
+      const std::vector<uint32_t>& input_strings_rk_hashes) noexcept;
   int32_t getOrAddImpl(const std::string& str) noexcept;
   template <class String>
   void hashStrings(const std::vector<String>& string_vec,
@@ -155,20 +162,21 @@ class StringDictionary {
   uint32_t computeBucket(const uint32_t hash,
                          std::string_view str,
                          const std::vector<int32_t>& data) const noexcept;
-  template <typename String>
+  template <class String>
   uint32_t computeBucketFromStorageAndMemory(
-      const uint32_t hash,
-      const String &str,
-      const std::vector<int32_t>& data,
-      const int32_t storage_high_water_mark,
+      const uint32_t input_string_rk_hash,
+      const String& input_string,
+      const std::vector<int32_t>& string_id_hash_table,
+      const size_t storage_high_water_mark,
       const std::vector<String>& input_strings,
       const std::vector<size_t>& string_memory_ids) const noexcept;
   uint32_t computeUniqueBucketWithHash(const uint32_t hash,
                                        const std::vector<int32_t>& data) const noexcept;
   void checkAndConditionallyIncreasePayloadCapacity(const size_t write_length);
   void checkAndConditionallyIncreaseOffsetCapacity(const size_t write_length);
+
   void appendToStorage(std::string_view str) noexcept;
-  template <typename String>
+  template <class String>
   void appendToStorageBulk(const std::vector<String>& input_strings,
                            const std::vector<size_t>& string_memory_ids,
                            const size_t sum_new_strings_lengths) noexcept;
@@ -190,7 +198,7 @@ class StringDictionary {
   compare_cache_value_t* binary_search_cache(const std::string& pattern) const;
 
   size_t str_count_;
-  std::vector<int32_t> str_ids_;
+  std::vector<int32_t> string_id_hash_table_;
   std::vector<uint32_t> rk_hashes_;
   std::vector<int32_t> sorted_cache;
   bool isTemp_;
