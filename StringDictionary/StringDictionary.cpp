@@ -1066,11 +1066,13 @@ uint32_t StringDictionary::computeBucketFromStorageAndMemory(
       }
     } else {
       // The candidate string is in storage, need to fetch it for comparison
-      const auto candidate_storage_string = getStringFromStorage(candidate_string_id);
-      if (input_string.size() == candidate_storage_string.size &&
+      const auto candidate_storage_string = getStringFromStorageFast(candidate_string_id);
+      if (input_string.size() == candidate_storage_string.size() &&
           !memcmp(input_string.data(),
-                  candidate_storage_string.c_str_ptr,
+                  candidate_storage_string.data(),
                   input_string.size())) {
+        //! memcmp(input_string.data(), candidate_storage_string.c_str_ptr,
+        //! input_string.size())) {
         // found the string in storage
         break;
       }
@@ -1187,15 +1189,11 @@ void StringDictionary::appendToStorageBulk(
   }
 }
 
-template void StringDictionary::appendToStorageBulk(
-    const std::vector<std::string>& input_strings,
-    const std::vector<size_t>& string_memory_ids,
-    const size_t sum_new_strings_lengths) noexcept;
-
-template void StringDictionary::appendToStorageBulk(
-    const std::vector<std::string_view>& input_strings,
-    const std::vector<size_t>& string_memory_ids,
-    const size_t sum_new_strings_lengths) noexcept;
+std::string_view StringDictionary::getStringFromStorageFast(const int string_id) const
+    noexcept {
+  const StringIdxEntry* str_meta = offset_map_ + string_id;
+  return {payload_map_ + str_meta->off, str_meta->size};
+}
 
 StringDictionary::PayloadString StringDictionary::getStringFromStorage(
     const int string_id) const noexcept {
