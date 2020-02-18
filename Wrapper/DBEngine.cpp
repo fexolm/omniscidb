@@ -147,4 +147,16 @@ namespace OmnisciDbEngine {
 	DBEngineImpl* pEngine = GetImpl(this);
         return pEngine->ExecuteDML(sQuery);
     }
+
+    int TargetValueToInt(const TargetValue *v) {
+        return 5;
+    }
+
+    double TargetValueToDouble(const TargetValue *v) {
+        return 5.05;
+    }
+
+    std::string TargetValueToString(const TargetValue *v) {
+        return "Test string";
+    }
 }

@@ -1,13 +1,49 @@
+from libc.stdint cimport int64_t, uint64_t, uint32_t
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string
+from libcpp cimport bool
+from libcpp.pair cimport pair
+from libcpp.vector cimport vector
 from cython.operator cimport dereference as deref
 
 # Declare the class with cdef
-cdef extern from "QueryEngine/ResultSet.h":
+
+cdef extern from "boost/variant.hpp" namespace "boost":
+    cdef cppclass boostvariant "boost::variant" [T1]:
+        pass
+    cdef cppclass boostvariant2 "boost::variant" [T1, T2]:
+        pass
+    cdef cppclass boostvariant4 "boost::variant" [T1, T2, T3, T4]:
+        pass
+
+
+ctypedef boostvariant2[string, void*] NullableString
+
+ctypedef boostvariant4[int64_t, double, float, NullableString] ScalarTargetValue
+
+cdef extern from "boost/optional.hpp" namespace "boost":
+    cdef cppclass boostoptional "boost::optional" [T]:
+        pass
+
+ctypedef boostoptional[vector[ScalarTargetValue]] boost_optional_vector
+
+ctypedef boostvariant[boost_optional_vector] ArrayTargetValue
+
+ctypedef boostvariant2[ScalarTargetValue, ArrayTargetValue] TargetValue
+
+cdef extern from "QueryEngine/TargetValue.h":
     cdef cppclass ResultSet:
         ResultSet()
-
         string getName() except *
+        vector[TargetValue] getNextRow(const bool translate_strings, const bool decimal_to_double)
+
+cdef extern from "QueryEngine/ResultSet.h":
+    cdef cppclass ResultSet:
+        size_t colCount()
+#        SQLTypeInfo getColType(const size_t col_idx)
+        size_t rowCount(const bool force_parallel)
+        vector[TargetValue] getNextRow(const bool translate_strings, const bool decimal_to_double)
+        TargetValue getRowAt(const size_t row_idx, const size_t col_idx, const bool translate_strings, const bool decimal_to_double)
 
 cdef extern from "DBEngine.h" namespace "OmnisciDbEngine":
     cdef cppclass DBEngine:
@@ -16,3 +52,8 @@ cdef extern from "DBEngine.h" namespace "OmnisciDbEngine":
         void Reset()
         @staticmethod
         DBEngine* Create(string)
+
+    int TargetValueToInt(const TargetValue *v)
+    double TargetValueToDouble(const TargetValue *v)
+    string TargetValueToString(const TargetValue *v)
+
