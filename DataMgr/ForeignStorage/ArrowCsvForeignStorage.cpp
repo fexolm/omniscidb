@@ -221,6 +221,7 @@ void ArrowCsvForeignStorage::registerTable(Catalog_Namespace::Catalog* catalog,
     popt.quoting = false;
     popt.escaping = false;
     popt.newlines_in_values = false;
+    popt.delimiter = '|';
 
     auto ropt = arrow::csv::ReadOptions::Defaults();
     ropt.use_threads = true;
