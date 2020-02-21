@@ -1,7 +1,7 @@
 from libc.stdint cimport int64_t, uint64_t, uint32_t
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string
-from libcpp cimport bool
+from libcpp cimport bool, nullptr_t, nullptr
 from libcpp.pair cimport pair
 from libcpp.vector cimport vector
 from cython.operator cimport dereference as deref
@@ -40,20 +40,28 @@ cdef extern from "QueryEngine/TargetValue.h":
 cdef extern from "QueryEngine/ResultSet.h":
     cdef cppclass ResultSet:
         size_t colCount()
-#        SQLTypeInfo getColType(const size_t col_idx)
         size_t rowCount(const bool force_parallel)
         vector[TargetValue] getNextRow(const bool translate_strings, const bool decimal_to_double)
         TargetValue getRowAt(const size_t row_idx, const size_t col_idx, const bool translate_strings, const bool decimal_to_double)
 
 cdef extern from "DBEngine.h" namespace "OmnisciDbEngine":
+    cdef cppclass Row:
+        int64_t GetInt(size_t col);
+        double GetDouble(size_t col);
+        string GetStr(size_t col);
+
+    cdef cppclass Cursor:
+        size_t GetColCount()
+        size_t GetRowCount()
+        Row GetNextRow()
+        int GetColType(int nPos)
+
     cdef cppclass DBEngine:
         void ExecuteDDL(string)
-        shared_ptr[ResultSet] ExecuteDML(string)
+        Cursor* ExecuteDML(string)
+#        shared_ptr[ResultSet] ExecuteDML(string)
         void Reset()
         @staticmethod
         DBEngine* Create(string)
 
-    int TargetValueToInt(const TargetValue *v)
-    double TargetValueToDouble(const TargetValue *v)
-    string TargetValueToString(const TargetValue *v)
 
