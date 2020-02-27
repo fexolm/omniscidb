@@ -174,11 +174,6 @@ static std::shared_ptr<arrow::DataType> getArrowImportType(const SQLTypeInfo typ
       return decimal(type.get_precision(), type.get_scale());
     case kTIME:
       return time32(TimeUnit::SECOND);
-    // case kDATE:
-    // TODO(wamsi) : Remove date64() once date32() support is added in cuDF. date32()
-    // Currently support for date32() is missing in cuDF.Hence, if client requests for
-    // date on GPU, return date64() for the time being, till support is added.
-    // return device_type_ == ExecutorDeviceType::GPU ? date64() : date32();
     case kTIMESTAMP:
       switch (type.get_precision()) {
         case 0:
@@ -191,6 +186,16 @@ static std::shared_ptr<arrow::DataType> getArrowImportType(const SQLTypeInfo typ
           return timestamp(TimeUnit::NANO);
         default:
           throw std::runtime_error("Unsupported timestamp precision for Arrow: " +
+                                   std::to_string(type.get_precision()));
+      }
+    case kDATE:
+      switch (type.get_size()) {
+        case 4:
+          return date32();
+        case 8:
+          return date64();
+        case 2:
+          throw std::runtime_error("Unsupported date size for Arrow: " +
                                    std::to_string(type.get_precision()));
       }
     case kARRAY:
