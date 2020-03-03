@@ -279,28 +279,28 @@ extern "C" DEVICE int8_t* array_buff(int8_t* chunk_iter_, const uint64_t row_pos
 
 #include <set>
 
-extern "C" ALWAYS_INLINE int64_t elem_bitcast_int8_t(const int8_t val) {
+extern "C"  int64_t elem_bitcast_int8_t(const int8_t val) {
   return val;
 }
 
-extern "C" ALWAYS_INLINE int64_t elem_bitcast_int16_t(const int16_t val) {
+extern "C"  int64_t elem_bitcast_int16_t(const int16_t val) {
   return val;
 }
 
-extern "C" ALWAYS_INLINE int64_t elem_bitcast_int32_t(const int32_t val) {
+extern "C"  int64_t elem_bitcast_int32_t(const int32_t val) {
   return val;
 }
 
-extern "C" ALWAYS_INLINE int64_t elem_bitcast_int64_t(const int64_t val) {
+extern "C"  int64_t elem_bitcast_int64_t(const int64_t val) {
   return val;
 }
 
-extern "C" ALWAYS_INLINE int64_t elem_bitcast_float(const float val) {
+extern "C"  int64_t elem_bitcast_float(const float val) {
   const double dval{val};
   return *reinterpret_cast<const int64_t*>(may_alias_ptr(&dval));
 }
 
-extern "C" ALWAYS_INLINE int64_t elem_bitcast_double(const double val) {
+extern "C"  int64_t elem_bitcast_double(const double val) {
   return *reinterpret_cast<const int64_t*>(may_alias_ptr(&val));
 }
 

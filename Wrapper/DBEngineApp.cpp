@@ -319,6 +319,7 @@
 //  return 0;
 //}
 
+
 using namespace OmnisciDbEngine;
 
 int main(int argc, char* argv[]) {
@@ -364,8 +365,13 @@ int main(int argc, char* argv[]) {
 //	std::unique_ptr<DBEngine> 
 	auto eng = DBEngine::Create(base_path.c_str());
 	std::cout << "Engine created" << std::endl;
-	eng->Execute("CREATE TABLE Testt (fld1 BIGINT)");
-	std::cout << "Query executed" << std::endl;
+//	eng->ExecuteDDL("CREATE TABLE Testt (fld1 BIGINT)");
+//	std::cout << "CREATE TABLE - OK" << std::endl;
+        auto aCursor = eng->ExecuteDML("SELECT count(id) FROM omnisci_states where abbr = 'CA'");
+	std::cout << "SELECT - OK" << std::endl;
+	std::cout << "Records: " << aCursor->GetRowCount() << std::endl;
+        auto aBatch = aCursor->GetArrowRecordBatch();
+	std::cout << "GET RECORD BATCH - OK" << std::endl;
 	eng->Reset();
 	std::cout << "Engine reseted" << std::endl;
   } catch (boost::program_options::error& e) {
