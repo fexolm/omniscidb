@@ -108,7 +108,7 @@ set(query_engine_source_files
     WindowContext.cpp
     WindowExpressionRewrite.cpp
     WindowFunctionIR.cpp
-    
+
     Codec.h
     Execute.h
     NvidiaKernel.h
@@ -400,5 +400,5 @@ add_custom_command(
         -c ${CMAKE_CURRENT_SOURCE_DIR}/Rendering/ee/ThrustTransform.cu
     )
 
-#add_executable(group_by_hash_test ${group_by_hash_test_files})
-#target_link_libraries(group_by_hash_test gtest Shared ${Boost_LIBRARIES} ${PROFILER_LIBS})
+add_executable(group_by_hash_test ${group_by_hash_test_files})
+target_link_libraries(group_by_hash_test gtest Shared ${Boost_LIBRARIES} ${PROFILER_LIBS})

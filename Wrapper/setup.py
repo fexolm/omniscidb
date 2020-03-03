@@ -6,10 +6,10 @@ from Cython.Build import cythonize
 ext_modules = [Extension("dbe",
                      ["dbe.pyx"],
                      language='c++',
-                     extra_compile_args=["-std=c++17"],
-                     include_dirs=['../'],
-                     library_dirs=['./', '/usr/local/mapd-deps/lib', '/localdisk/gal/root/igalink/omniscidb/build/Wrapper'],
-                     libraries=['DBEngine'],
+                     extra_compile_args=["-std=c++17", "-fPIC", "-pie", "-lc"],
+                     include_dirs=['../', '/nfs/site/home/gpetrova/miniconda3/envs/ibis-dev/include/'],
+                     library_dirs=['./', '../build/Wrapper', '/usr/local/mapd-deps/lib', '/lib/x86_64-linux-gnu', '/usr/lib/x86_64-linux-gnu'],
+                     libraries=['DBEngine', 'arrow'],
                      )]
 
 setup(

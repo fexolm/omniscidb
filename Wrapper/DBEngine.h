@@ -3,10 +3,15 @@
 #ifndef __DB_ENGINE_H
 #define __DB_ENGINE_H
 
+#include <iostream>
 #include <string>
 #include <vector>
+#include <memory>
+#include <type_traits>
+#include "arrow/api.h"
+#include "arrow/ipc/api.h"
 #include "QueryEngine/TargetValue.h"
-//#include<memory>
+
 //#include "QueryEngine/ResultSet.h"
 
 namespace OmnisciDbEngine {
@@ -28,7 +33,9 @@ namespace OmnisciDbEngine {
         size_t GetColCount();
         size_t GetRowCount();
         Row GetNextRow();
-        int GetColType(int nPos);
+        int GetColType(uint32_t nPos);
+        std::shared_ptr<arrow::RecordBatch> GetArrowRecordBatch();
+        void GetArrowRecordBatchNew(int i) {std::cout << i <<std::endl;}
     };
 
     class DBEngine {

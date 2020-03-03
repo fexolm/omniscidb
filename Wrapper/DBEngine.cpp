@@ -4,6 +4,8 @@
 #include <thrift/Thrift.h>
 #include "Catalog/Catalog.h"
 #include "QueryEngine/ResultSet.h"
+#include "QueryEngine/ArrowResultSet.h"
+//#include "QueryEngine/ArrowUtil.h"
 #include "QueryRunner/QueryRunner.h"
 #include "QueryEngine/CompilationOptions.h"
 #include "Import/Importer.h"
@@ -34,8 +36,9 @@ namespace OmnisciDbEngine {
 
     class CursorImpl : public Cursor {
     public:
-        CursorImpl(std::shared_ptr<ResultSet> resultSet)
-        : m_resultSet(resultSet) {
+        CursorImpl(std::shared_ptr<ResultSet> resultSet, std::shared_ptr<Data_Namespace::DataMgr> dataMgr)
+        : m_resultSet(resultSet) 
+        , m_DataMgr(dataMgr) {
         }
 
         size_t GetColCount() {
@@ -55,7 +58,7 @@ namespace OmnisciDbEngine {
             return Row(row);
         }
 
-        ColumnType GetColType(int nPos) {
+        ColumnType GetColType(uint32_t nPos) {
             if (nPos < GetColCount()) {
                 SQLTypeInfo typeInfo = m_resultSet->getColType(nPos);
                 switch(typeInfo.get_type()) {
@@ -84,8 +87,39 @@ namespace OmnisciDbEngine {
             return ColumnType::eUNK;
         }
 
+        std::shared_ptr<arrow::RecordBatch> GetArrowRecordBatch() {
+            const std::unique_ptr<ArrowResultSetConverter> converter;
+            if (auto dataMgr = m_DataMgr.lock()) {
+                std::vector<std::string> names = {"fld1", "fld2", "fld3"};
+                std::make_unique<ArrowResultSetConverter>(m_resultSet,
+                                                          dataMgr,
+                                                          ExecutorDeviceType::CPU,
+                                                          0,
+                                                          names, //getTargetNames(result.getTargetsMeta()),
+                                                          10);
+                arrow::ipc::DictionaryMemo memo;
+                return converter->convertToArrow(memo);
+            }
+            std::cout << "Data Manager ptr is expired" << std::endl;
+            return nullptr;
+
+            //ArrowResult arrow_result;
+            //_return.arrow_conversion_time_ms += measure<>::execution([&] { arrow_result = converter->getArrowResult(); });
+            //_return.sm_handle = std::string(arrow_result.sm_handle.begin(), arrow_result.sm_handle.end());
+            //_return.sm_size = arrow_result.sm_size;
+            //_return.df_handle = std::string(arrow_result.df_handle.begin(), arrow_result.df_handle.end());
+            //if (device_type == ExecutorDeviceType::GPU) {
+            //std::lock_guard<std::mutex> map_lock(handle_to_dev_ptr_mutex_);
+            //CHECK(!ipc_handle_to_dev_ptr_.count(_return.df_handle));
+            //ipc_handle_to_dev_ptr_.insert(
+            //std::make_pair(_return.df_handle, arrow_result.df_dev_ptr));
+            //}
+            //_return.df_size = arrow_result.df_size;
+        }
+
     private:
         std::shared_ptr<ResultSet> m_resultSet;
+        std::weak_ptr<Data_Namespace::DataMgr> m_DataMgr;
     };
 
 //////////////////////////////////////////////////////////////////////////// DBEngineImp
@@ -94,7 +128,6 @@ namespace OmnisciDbEngine {
         const std::string OMNISCI_DEFAULT_DB = "omnisci";
         const std::string OMNISCI_ROOT_USER = "admin";
         const std::string OMNISCI_DATA_PATH = "//mapd_data";
-        //const int CALCITEPORT = 3279;
 
         void Reset() {
             std::cout << "DESTRUCTOR DBEngineImpl" << std::endl;
@@ -123,10 +156,11 @@ namespace OmnisciDbEngine {
         Cursor* ExecuteDML(const std::string& sQuery) {
             if (m_pQueryRunner != nullptr) {
                 auto rs = m_pQueryRunner->runSQL(sQuery, ExecutorDeviceType::CPU);
-                m_Cursors.emplace_back(new CursorImpl(rs));
+                m_Cursors.emplace_back(new CursorImpl(rs, m_DataMgr));
                 return m_Cursors.back(); //m_pQueryRunner->runSQL(sQuery, ExecutorDeviceType::CPU);
             }
             std::cout << "Query Runner is NULL" << std::endl;
+            return nullptr;
         }
 
         DBEngineImpl(const std::string& sBasePath) 
@@ -172,7 +206,7 @@ namespace OmnisciDbEngine {
 
     void DBEngine::Reset() {
         DBEngineImpl* pEngine = GetImpl(this);
-        //pEngine->Reset();
+        pEngine->Reset();
     }
 
     void DBEngine::ExecuteDDL(std::string sQuery) {
@@ -180,7 +214,6 @@ namespace OmnisciDbEngine {
         pEngine->ExecuteDDL(sQuery);
     }
 
-//    std::shared_ptr<ResultSet> 
     Cursor* DBEngine::ExecuteDML(std::string sQuery) {
         DBEngineImpl* pEngine = GetImpl(this);
         return pEngine->ExecuteDML(sQuery);
@@ -249,9 +282,15 @@ namespace OmnisciDbEngine {
         return pCursor->GetNextRow();
     }
 
-    int Cursor::GetColType(int nPos) {
+    int Cursor::GetColType(uint32_t nPos) {
         CursorImpl* pCursor = GetImpl(this);
         int nColType = (int)pCursor->GetColType(nPos);
         return nColType;
+    }
+
+    std::shared_ptr<arrow::RecordBatch> Cursor::GetArrowRecordBatch() {
+        CursorImpl* pCursor = GetImpl(this);
+        return pCursor->GetArrowRecordBatch();
+
     }
 }
