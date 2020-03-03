@@ -35,7 +35,6 @@ namespace OmnisciDbEngine {
         Row GetNextRow();
         int GetColType(uint32_t nPos);
         std::shared_ptr<arrow::RecordBatch> GetArrowRecordBatch();
-        void GetArrowRecordBatchNew(int i) {std::cout << i <<std::endl;}
     };
 
     class DBEngine {
