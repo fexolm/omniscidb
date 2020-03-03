@@ -7,7 +7,7 @@ ext_modules = [Extension("dbe",
                      ["dbe.pyx"],
                      language='c++',
                      extra_compile_args=["-std=c++17", "-fPIC", "-pie", "-lc"],
-                     include_dirs=['../', '/nfs/site/home/gpetrova/miniconda3/envs/ibis-dev/include/'],
+                     include_dirs=['../'],
                      library_dirs=['./', '../build/Wrapper', '/usr/local/mapd-deps/lib', '/lib/x86_64-linux-gnu', '/usr/lib/x86_64-linux-gnu'],
                      libraries=['DBEngine', 'arrow'],
                      )]

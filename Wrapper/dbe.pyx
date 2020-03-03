@@ -9,17 +9,6 @@ from libcpp.pair cimport pair
 from libcpp.vector cimport vector
 from datetime import datetime
 
-from cpython.buffer cimport PyObject_GetBuffer, PyBUF_FULL
-
-#from pyarrow.compat import frombytes, tobytes
-################################from pyarrow.lib cimport *
-#from pyarrow.lib import ArrowException
-##from pyarrow.lib import as_buffer
-##from pyarrow.includes.libarrow_flight cimport *
-##from pyarrow.ipc import _ReadPandasOption
-#import pyarrow.lib as lib
-
-
 import os
 
 # Create a Cython extension type which holds a C++ instance
@@ -32,10 +21,6 @@ from DBEngine cimport Cursor as _Cursor
 from DBEngine cimport DBEngine
 from DBEngine cimport ResultSet
 #from DBEngine cimport ColumnType
-
-import pyarrow as pa
-pa.get_include()
-
 
 cdef class PyResultSet:
     cdef shared_ptr[ResultSet] c_result_set  #Hold a C++ instance which we're wrapping
@@ -59,12 +44,6 @@ cdef object PyStruct(shared_ptr[ResultSet] PyResultSet_ptr):
     # Return the wrapped PyResultSet object with PyResultSet_ptr
     return py_wrapper
 
-#cdef class PyColumnType:
-#  cdef ColumnType c_col_type
-#  def __cinit__(self):
-#    """self.c_col_type = ColumnType.eUNK"""
-#    pass
-
 cdef class PyRow:
     cdef _Row c_row  #Hold a C++ instance which we're wrapping
 
@@ -80,13 +59,6 @@ cdef class PyRow:
 
 cdef class PyCursor:
     cdef _Cursor* c_cursor  #Hold a C++ instance which we're wrapping
-    cdef shared_ptr[CRecordBatch] c_batch
-
-#    cdef batch_wrap(mat):
-#        cdef Py_buffer buf
-#        PyObject_GetBuffer(mat, &buf, PyBUF_FULL)
-#        cdef shared_ptr[CppObj] obj_ptr = cpp_function(&buf)
-#        return PyObj.create(obj_ptr)
 
     def colCount(self):
         return self.c_cursor.GetColCount()
@@ -100,30 +72,7 @@ cdef class PyCursor:
         return obj
 
     def getColType(self, uint32_t pos):
-#        obj = PyColumnType()
-#        obj.c_col_type = self.c_cursor.GetColType(pos)
         return self.c_cursor.GetColType(pos)
-
-#    cdef getArrowRecordBatch(self):
-#        c_batch = self.c_cursor.GetArrowRecordBatch()
-#        return wrap_table(c_batch)
-#        return wrap_record_batch(c_batch)
-
-#        return pa.pyarrow_wrap_batch(c_batch)
-#        cdef Py_buffer buf
-#        PyObject_GetBuffer(c_batch, &buf, PyBUF_FULL)
-#        c_batch = self.c_cursor.GetArrowRecordBatch()
-#        cdef shared_ptr[CRecordBatch] obj_ptr = cpp_function(&buf)
-#        return PyObj.create(obj_ptr)
-#        self.c_batch = self.c_cursor.GetArrowRecordBatch()
-#        cdef shared_ptr[CRecordBatch] c_batch
-#        with nogil:
-#            c_batch = self.c_cursor.GetArrowRecordBatch()
-#        return pyarrow_wrap_batch(c_batch)
-#        return pyarrow_wrap_batch(c_batch)
-#        cdef RecordBatch obj = pa.pyarrow_wrap_batch(self.c_batch)
-#        return obj
-#        return pa.pyarrow_wrap_batch(self.c_cursor.GetArrowRecordBatch())
 
     def showRows(self, int max_rows):
         col_count = self.colCount();
