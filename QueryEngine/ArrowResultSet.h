@@ -185,12 +185,10 @@ class ArrowResultSetConverter {
                           const std::vector<std::string>& col_names,
                           const int32_t first_n)
       : results_(results), col_names_(col_names), top_n_(first_n) {}
-public:
   std::shared_ptr<arrow::RecordBatch> convertToArrow(
       arrow::ipc::DictionaryMemo& memo) const;
   std::shared_ptr<arrow::RecordBatch> getArrowBatch(
       const std::shared_ptr<arrow::Schema>& schema) const;
-private:
   ArrowResult getArrowResultImpl() const;
   std::shared_ptr<arrow::Field> makeField(
       const std::string name,

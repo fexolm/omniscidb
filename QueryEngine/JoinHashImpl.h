@@ -28,7 +28,7 @@
 #include "../Shared/funcannotations.h"
 #include "../Shared/shard_key.h"
 
-extern "C" DEVICE int32_t* SUFFIX(get_bucketized_hash_slot)(
+extern "C" ALWAYS_INLINE DEVICE int32_t* SUFFIX(get_bucketized_hash_slot)(
     int32_t* buff,
     const int64_t key,
     const int64_t min_key,
@@ -36,13 +36,13 @@ extern "C" DEVICE int32_t* SUFFIX(get_bucketized_hash_slot)(
   return buff + (key - min_key) / bucket_normalization;
 }
 
-extern "C" DEVICE int32_t* SUFFIX(get_hash_slot)(int32_t* buff,
+extern "C" ALWAYS_INLINE DEVICE int32_t* SUFFIX(get_hash_slot)(int32_t* buff,
                                                                const int64_t key,
                                                                const int64_t min_key) {
   return buff + (key - min_key);
 }
 
-extern "C" DEVICE int32_t* SUFFIX(get_bucketized_hash_slot_sharded)(
+extern "C" ALWAYS_INLINE DEVICE int32_t* SUFFIX(get_bucketized_hash_slot_sharded)(
     int32_t* buff,
     const int64_t key,
     const int64_t min_key,
@@ -57,7 +57,7 @@ extern "C" DEVICE int32_t* SUFFIX(get_bucketized_hash_slot_sharded)(
   return shard_buffer + (key - min_key) / bucket_normalization / num_shards;
 }
 
-extern "C" DEVICE int32_t* SUFFIX(get_hash_slot_sharded)(
+extern "C" ALWAYS_INLINE DEVICE int32_t* SUFFIX(get_hash_slot_sharded)(
     int32_t* buff,
     const int64_t key,
     const int64_t min_key,
