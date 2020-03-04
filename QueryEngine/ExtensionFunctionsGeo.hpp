@@ -14,7 +14,7 @@
 // For example 1.0 longitude compressed with GEOINT32 and then decompressed
 // comes back as 0.99999994086101651, which is still within GEOINT32
 // tolerance val 0.0000001
-DEVICE  double tol(int32_t ic) {
+DEVICE ALWAYS_INLINE double tol(int32_t ic) {
   if (ic == COMPRESSION_GEOINT32) {
     return TOLERANCE_GEOINT32;
   }
@@ -22,34 +22,34 @@ DEVICE  double tol(int32_t ic) {
 }
 
 // Combine tolerances for two-component calculations
-DEVICE  double tol(int32_t ic1, int32_t ic2) {
+DEVICE ALWAYS_INLINE double tol(int32_t ic1, int32_t ic2) {
   return fmax(tol(ic1), tol(ic2));
 }
 
-DEVICE  bool tol_zero(double x, double tolerance = TOLERANCE_DEFAULT) {
+DEVICE ALWAYS_INLINE bool tol_zero(double x, double tolerance = TOLERANCE_DEFAULT) {
   return (-tolerance <= x) && (x <= tolerance);
 }
 
-DEVICE  bool tol_eq(double x,
+DEVICE ALWAYS_INLINE bool tol_eq(double x,
                                  double y,
                                  double tolerance = TOLERANCE_DEFAULT) {
   auto diff = x - y;
   return (-tolerance <= diff) && (diff <= tolerance);
 }
 
-DEVICE  bool tol_le(double x,
+DEVICE ALWAYS_INLINE bool tol_le(double x,
                                  double y,
                                  double tolerance = TOLERANCE_DEFAULT) {
   return x <= (y + tolerance);
 }
 
-DEVICE  bool tol_ge(double x,
+DEVICE ALWAYS_INLINE bool tol_ge(double x,
                                  double y,
                                  double tolerance = TOLERANCE_DEFAULT) {
   return (x + tolerance) >= y;
 }
 
-DEVICE  double decompress_coord(int8_t* data,
+DEVICE ALWAYS_INLINE double decompress_coord(int8_t* data,
                                              int32_t index,
                                              int32_t ic,
                                              bool x) {
@@ -66,14 +66,14 @@ DEVICE  double decompress_coord(int8_t* data,
   return double_coords[index];
 }
 
-DEVICE  int32_t compression_unit_size(int32_t ic) {
+DEVICE ALWAYS_INLINE int32_t compression_unit_size(int32_t ic) {
   if (ic == COMPRESSION_GEOINT32) {
     return 4;
   }
   return 8;
 }
 
-DEVICE  double transform_coord(double coord,
+DEVICE ALWAYS_INLINE double transform_coord(double coord,
                                             int32_t isr,
                                             int32_t osr,
                                             bool x) {
@@ -91,7 +91,7 @@ DEVICE  double transform_coord(double coord,
 }
 
 // X coord accessor handling on-the-fly decommpression and transforms
-DEVICE  double coord_x(int8_t* data,
+DEVICE ALWAYS_INLINE double coord_x(int8_t* data,
                                     int32_t index,
                                     int32_t ic,
                                     int32_t isr,
@@ -103,7 +103,7 @@ DEVICE  double coord_x(int8_t* data,
 }
 
 // Y coord accessor handling on-the-fly decommpression and transforms
-DEVICE  double coord_y(int8_t* data,
+DEVICE ALWAYS_INLINE double coord_y(int8_t* data,
                                     int32_t index,
                                     int32_t ic,
                                     int32_t isr,
@@ -115,7 +115,7 @@ DEVICE  double coord_y(int8_t* data,
 }
 
 // Cartesian distance between points, squared
-DEVICE  double distance_point_point_squared(double p1x,
+DEVICE ALWAYS_INLINE double distance_point_point_squared(double p1x,
                                                          double p1y,
                                                          double p2x,
                                                          double p2y) {
@@ -131,7 +131,7 @@ DEVICE  double distance_point_point_squared(double p1x,
 }
 
 // Cartesian distance between points
-DEVICE  double distance_point_point(double p1x,
+DEVICE ALWAYS_INLINE double distance_point_point(double p1x,
                                                  double p1y,
                                                  double p2x,
                                                  double p2y) {
@@ -168,7 +168,7 @@ double distance_point_line(double px,
 
 // Given three colinear points p, q, r, the function checks if
 // point q lies on line segment 'pr'
-DEVICE  bool on_segment(double px,
+DEVICE ALWAYS_INLINE bool on_segment(double px,
                                      double py,
                                      double qx,
                                      double qy,
@@ -178,7 +178,7 @@ DEVICE  bool on_segment(double px,
           tol_le(qy, fmax(py, ry)) && tol_ge(qy, fmin(py, ry)));
 }
 
-DEVICE  int16_t
+DEVICE ALWAYS_INLINE int16_t
 orientation(double px, double py, double qx, double qy, double rx, double ry) {
   auto val = ((qy - py) * (rx - qx) - (qx - px) * (ry - qy));
   if (tol_zero(val)) {
@@ -565,7 +565,7 @@ bool polygon_contains_linestring(int8_t* poly,
   return true;
 }
 
-DEVICE  bool box_contains_point(double* bounds,
+DEVICE ALWAYS_INLINE bool box_contains_point(double* bounds,
                                              int64_t bounds_size,
                                              double px,
                                              double py) {
@@ -580,7 +580,7 @@ EXTENSION_NOINLINE bool Point_Overlaps_Box(double* bounds,
   return box_contains_point(bounds, bounds_size, px, py);
 }
 
-DEVICE  bool box_contains_box(double* bounds1,
+DEVICE ALWAYS_INLINE bool box_contains_box(double* bounds1,
                                            int64_t bounds1_size,
                                            double* bounds2,
                                            int64_t bounds2_size) {
@@ -591,7 +591,7 @@ DEVICE  bool box_contains_box(double* bounds1,
           bounds1, bounds1_size, bounds2[2], bounds2[3]));  // box1 <- box2: xmax, ymax
 }
 
-DEVICE  bool box_contains_box_vertex(double* bounds1,
+DEVICE ALWAYS_INLINE bool box_contains_box_vertex(double* bounds1,
                                                   int64_t bounds1_size,
                                                   double* bounds2,
                                                   int64_t bounds2_size) {
@@ -606,7 +606,7 @@ DEVICE  bool box_contains_box_vertex(double* bounds1,
           bounds1, bounds1_size, bounds2[2], bounds2[1]));  // box1 <- box2: xmax, ymin
 }
 
-DEVICE  bool box_overlaps_box(double* bounds1,
+DEVICE ALWAYS_INLINE bool box_overlaps_box(double* bounds1,
                                            int64_t bounds1_size,
                                            double* bounds2,
                                            int64_t bounds2_size) {
@@ -734,7 +734,7 @@ double ST_YMax_Bounds(double* bounds, int64_t size, int32_t isr, int32_t osr) {
 // ST_Length
 //
 
-DEVICE  double length_linestring(int8_t* l,
+DEVICE ALWAYS_INLINE double length_linestring(int8_t* l,
                                               int64_t lsize,
                                               int32_t ic,
                                               int32_t isr,
@@ -824,7 +824,7 @@ double ST_Perimeter_Polygon_Geodesic(int8_t* poly,
   return length_linestring(poly, exterior_ring_coords_size, ic, isr, osr, true, true);
 }
 
-DEVICE  double perimeter_multipolygon(int8_t* mpoly_coords,
+DEVICE ALWAYS_INLINE double perimeter_multipolygon(int8_t* mpoly_coords,
                                                    int64_t mpoly_coords_size,
                                                    int32_t* mpoly_ring_sizes,
                                                    int64_t mpoly_num_rings,
@@ -914,7 +914,7 @@ double ST_Perimeter_MultiPolygon_Geodesic(int8_t* mpoly_coords,
 // ST_Area
 //
 
-DEVICE  double area_triangle(double x1,
+DEVICE ALWAYS_INLINE double area_triangle(double x1,
                                           double y1,
                                           double x2,
                                           double y2,
@@ -923,7 +923,7 @@ DEVICE  double area_triangle(double x1,
   return (x1 * y2 - x2 * y1 + x3 * y1 - x1 * y3 + x2 * y3 - x3 * y2) / 2.0;
 }
 
-DEVICE  double area_ring(int8_t* ring,
+DEVICE ALWAYS_INLINE double area_ring(int8_t* ring,
                                       int64_t ringsize,
                                       int32_t ic,
                                       int32_t isr,
@@ -950,7 +950,7 @@ DEVICE  double area_ring(int8_t* ring,
   return area;
 }
 
-DEVICE  double area_polygon(int8_t* poly_coords,
+DEVICE ALWAYS_INLINE double area_polygon(int8_t* poly_coords,
                                          int64_t poly_coords_size,
                                          int32_t* poly_ring_sizes,
                                          int64_t poly_num_rings,
@@ -1192,7 +1192,7 @@ double ST_Distance_LineString_LineString_Geodesic(int8_t* l1,
   return distance_in_meters(l1x, l1y, l2x, l2y);
 }
 
-DEVICE  double distance_point_linestring(int8_t* p,
+DEVICE ALWAYS_INLINE double distance_point_linestring(int8_t* p,
                                                       int64_t psize,
                                                       int8_t* l,
                                                       int64_t lsize,
@@ -1987,7 +1987,7 @@ double max_distance_point_line(double px,
   return length2;
 }
 
-DEVICE  double max_distance_point_linestring(int8_t* p,
+DEVICE ALWAYS_INLINE double max_distance_point_linestring(int8_t* p,
                                                           int64_t psize,
                                                           int8_t* l,
                                                           int64_t lsize,

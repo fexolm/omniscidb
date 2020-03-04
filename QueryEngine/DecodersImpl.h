@@ -27,7 +27,7 @@
 #include <cstdint>
 #include "../Shared/funcannotations.h"
 
-extern "C" DEVICE inline ALWAYS_INLINE int64_t
+extern "C" DEVICE ALWAYS_INLINE int64_t
 SUFFIX(fixed_width_int_decode)(const int8_t* byte_stream,
                                const int32_t byte_width,
                                const int64_t pos) {
@@ -53,7 +53,7 @@ SUFFIX(fixed_width_int_decode)(const int8_t* byte_stream,
   }
 }
 
-extern "C" DEVICE inline ALWAYS_INLINE int64_t
+extern "C" DEVICE ALWAYS_INLINE int64_t
 SUFFIX(fixed_width_unsigned_decode)(const int8_t* byte_stream,
                                     const int32_t byte_width,
                                     const int64_t pos) {
@@ -93,7 +93,7 @@ SUFFIX(fixed_width_unsigned_decode_noinline)(const int8_t* byte_stream,
   return SUFFIX(fixed_width_unsigned_decode)(byte_stream, byte_width, pos);
 }
 
-extern "C" DEVICE inline ALWAYS_INLINE int64_t
+extern "C" DEVICE ALWAYS_INLINE int64_t
 SUFFIX(diff_fixed_width_int_decode)(const int8_t* byte_stream,
                                     const int32_t byte_width,
                                     const int64_t baseline,
@@ -101,7 +101,7 @@ SUFFIX(diff_fixed_width_int_decode)(const int8_t* byte_stream,
   return SUFFIX(fixed_width_int_decode)(byte_stream, byte_width, pos) + baseline;
 }
 
-extern "C" DEVICE inline ALWAYS_INLINE float SUFFIX(
+extern "C" DEVICE ALWAYS_INLINE float SUFFIX(
     fixed_width_float_decode)(const int8_t* byte_stream, const int64_t pos) {
 #ifdef WITH_DECODERS_BOUNDS_CHECKING
   assert(pos >= 0);
@@ -114,7 +114,7 @@ extern "C" DEVICE NEVER_INLINE float SUFFIX(
   return SUFFIX(fixed_width_float_decode)(byte_stream, pos);
 }
 
-extern "C" DEVICE inline ALWAYS_INLINE double SUFFIX(
+extern "C" DEVICE ALWAYS_INLINE double SUFFIX(
     fixed_width_double_decode)(const int8_t* byte_stream, const int64_t pos) {
 #ifdef WITH_DECODERS_BOUNDS_CHECKING
   assert(pos >= 0);
@@ -127,7 +127,7 @@ extern "C" DEVICE NEVER_INLINE double SUFFIX(
   return SUFFIX(fixed_width_double_decode)(byte_stream, pos);
 }
 
-extern "C" DEVICE inline ALWAYS_INLINE int64_t
+extern "C" DEVICE ALWAYS_INLINE int64_t
 SUFFIX(fixed_width_small_date_decode)(const int8_t* byte_stream,
                                       const int32_t byte_width,
                                       const int32_t null_val,

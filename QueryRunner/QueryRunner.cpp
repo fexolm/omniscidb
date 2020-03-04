@@ -130,6 +130,7 @@ QueryRunner::QueryRunner(const char* db_path,
   boost::filesystem::path base_path{db_path};
   CHECK(boost::filesystem::exists(base_path));
   auto system_db_file = base_path / "mapd_catalogs" / OMNISCI_DEFAULT_DB;
+std::cout << "system_db_file=" << system_db_file << std::endl;
   CHECK(boost::filesystem::exists(system_db_file));
   auto data_dir = base_path / "mapd_data";
   Catalog_Namespace::UserMetadata user;

@@ -161,7 +161,7 @@ class ResultSetStorage {
                              const size_t init_agg_val_idx,
                              const ResultSetStorage& that) const;
 
-  inline ALWAYS_INLINE
+  ALWAYS_INLINE
   void reduceOneSlot(int8_t* this_ptr1,
                      int8_t* this_ptr2,
                      const int8_t* that_ptr1,
