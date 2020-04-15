@@ -178,6 +178,7 @@ void ArrowCsvForeignStorage::read(const ChunkKey& chunk_key,
       auto fixed_type = dynamic_cast<arrow::FixedWidthType*>(array_data->type.get());
       if (fixed_type) {
         sz = size * (fixed_type->bit_width() / 8);
+        memset(dest, 0xFF, sz);
       } else {
         CHECK(false);  // TODO: what's else???
       }
@@ -523,8 +524,17 @@ void ArrowCsvForeignStorage::registerTable(Catalog_Namespace::Catalog* catalog,
             frag.chunks[i - fragments[f].first_chunk] = indexArray->data();
           } else {
             frag.sz += size;
+            auto chunk = arr_col_chunked_array->chunk(i).get();
+            auto data =  chunk->data()->buffers[1]->mutable_data();
             frag.chunks[i - fragments[f].first_chunk] =
                 arr_col_chunked_array->chunk(i)->data();
+            tbb::parallel_for(tbb::blocked_range(offset, offset+size), [&](auto &range) {
+              for(int i=range.begin(); i<range.end(); i++) {
+              if(chunk->IsNull(i)) {
+                memset(data + i * c.columnType.get_size(), 0xFF, c.columnType.get_size());
+              }
+            }
+            });
             auto& buffers = arr_col_chunked_array->chunk(i)->data()->buffers;
             if (!empty) {
               if (ctype == kTEXT) {
